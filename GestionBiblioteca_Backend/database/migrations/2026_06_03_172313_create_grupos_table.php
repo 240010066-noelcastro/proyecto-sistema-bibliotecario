@@ -19,7 +19,7 @@ return new class extends Migration
             // Llave foránea para la relación con Carreras
             $table->unsignedBigInteger('Carrera_ID');
             $table->foreign('Carrera_ID')->references('Carrera_ID')->on('carreras');
-            
+            $table->string('Estado', 20)->default('Activo');
             $table->timestamps();
         });
     }

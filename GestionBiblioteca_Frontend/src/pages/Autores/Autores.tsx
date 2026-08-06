@@ -35,6 +35,9 @@ const Autores: React.FC = () => {
   const [lastPage, setLastPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
 
+  // MANEJO DE CONFIGURACIÓN POR ÍTEMS JSON
+  const [tiposAutorLista, setTiposAutorLista] = useState<any[]>([]);
+
   const [formData, setFormData] = useState<any>({ 
     Autor_ID: null, NombreAutor: '', ApellidosAutor: '', Seudonimo: '', 
     TipoAutor: 'Personal', Nacionalidad: '', Bibliografia: '', Email: '', Telefono: ''
@@ -47,7 +50,6 @@ const Autores: React.FC = () => {
 
   // LIMPIEZA ABSOLUTA AL ENTRAR AL MÓDULO
   useIonViewWillEnter(() => {
-    // Apagamos visuales síncronamente primero
     setShowHelp(false);
     setShowForm(false);
     setIsEditing(false);
@@ -63,6 +65,25 @@ const Autores: React.FC = () => {
       setIsLoading(true);
       try {
         await fetchPage(1, '');
+        
+        const resConfig = await api.get('/configuraciones/Autores');
+        const content = resConfig.data?.data;
+        let raw = null;
+        
+        if (content) {
+          if (Array.isArray(content)) {
+            const matchedRow = content.find((row: any) => row.Clave === 'tipos_autor');
+            raw = matchedRow ? matchedRow.Valor : null;
+          } else {
+            raw = content.tipos_autor;
+          }
+        }
+        
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        const normalized = Array.isArray(parsed) ? parsed : [{ label: 'Personal', isNative: true }, { label: 'Corporativo / Institucional', isNative: true }];
+        
+        // REQUERIMIENTO 5: Filtramos síncronamente los elementos ocultados mediante el icono del ojo en Ajustes
+        setTiposAutorLista(normalized.filter((item: any) => typeof item === 'string' ? true : !item.hidden));
       } catch (error) {
         console.error(error);
         setRecords([]);
@@ -392,8 +413,12 @@ const Autores: React.FC = () => {
                 <div className="form-group flex-1">
                   <label>TIPO DE AUTOR *</label>
                   <select className="custom-input select-input" value={formData.TipoAutor || ''} onChange={e => setFormData({...formData, TipoAutor: e.target.value})}>
-                    <option value="Personal">Personal</option>
-                    <option value="Corporativo">Corporativo / Institucional</option>
+                    <option value="" disabled>-- Seleccionar --</option>
+                    {tiposAutorLista.map((t, i) => (
+                      <option key={i} value={typeof t === 'string' ? t : (t.label || '')}>
+                        {typeof t === 'string' ? t : (t.label || '')}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className="form-group flex-1">

@@ -5,11 +5,17 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 // @ts-ignore
 import api from '../../services/api'; 
-import './Usuarios.css'; 
-
+import { ModalConstanciaNoAdeudo } from '../../components/ModalConstanciaNoAdeudo';
+import './Usuarios.css';
 const Usuarios: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+const [showAdminForm, setShowAdminForm] = useState(false);
+const [adminFormData, setAdminFormData] = useState({
+  NombreUsuario: '', ApellidoPaterno: '', ApellidoMaterno: '',
+  CorreoElectronico: '', Telefono: '', llave_infraestructura: ''
+});
+const [searchQuery, setSearchQuery] = useState('');
+const [filterEstado, setFilterEstado] = useState('Todos');
   
   const [isLoading, setIsLoading] = useState(true); 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -37,10 +43,17 @@ const Usuarios: React.FC = () => {
     CorreoElectronico: '', Telefono: '', Grupo_ID: '', EstadoCuenta: 'Activo'
   });
 
+  // Estados para Constancia de No Adeudo
+  const [isConstanciaModalOpen, setIsConstanciaModalOpen] = useState(false);
+  const [usuarioParaConstancia, setUsuarioParaConstancia] = useState<any>(null);
+  const [personalList, setPersonalList] = useState<any[]>([]);
+
   useIonViewWillEnter(() => {
     setShowForm(false);
+    setShowAdminForm(false);
     setIsEditing(false);
     setSearchQuery('');
+    setFilterEstado('Todos');
     setCurrentPage(1);
     setRecords([]); 
     setShowHelp(false); 
@@ -52,6 +65,11 @@ const Usuarios: React.FC = () => {
       try {
         const resGrupos = await api.get('/grupos?all=true');
         setGruposDB(resGrupos.data?.data || []);
+
+        // Cargar personal para el selector de firma
+        const resPersonal = await api.get('/personal');
+        setPersonalList(resPersonal.data?.data || resPersonal.data || []);
+
         await fetchPage(1, '');
       } catch (error) {
         setIsLoading(false);
@@ -60,7 +78,7 @@ const Usuarios: React.FC = () => {
     fetchInitialData();
   });
 
-  const fetchPage = async (page: number, search = searchQuery) => {
+  const fetchPage = async (page: number, search = searchQuery, estado = filterEstado) => {
     setIsLoading(true); 
     if (abortControllerRef.current) abortControllerRef.current.abort();
     
@@ -68,7 +86,7 @@ const Usuarios: React.FC = () => {
     abortControllerRef.current = currentAbortController;
 
     try {
-      const res = await api.get(`/usuarios?page=${page}&search=${search}`, { signal: currentAbortController.signal });
+      const res = await api.get(`/usuarios?page=${page}&search=${search}&estado=${estado}`, { signal: currentAbortController.signal });
       setRecords(res.data?.data?.data || []);
       setCurrentPage(res.data?.data?.current_page || 1);
       setLastPage(res.data?.data?.last_page || 1);
@@ -80,9 +98,15 @@ const Usuarios: React.FC = () => {
     }
   };
 
+  // 👈 FUNCIÓN AGREGADA PARA ATENDER EL SELECT
+  const handleFilterChange = (nuevoEstado: string) => {
+    setFilterEstado(nuevoEstado);
+    fetchPage(1, searchQuery, nuevoEstado);
+  };
+
   // Función para disparar la búsqueda solo al hacer clic en la lupa o dar Enter
   const handleSearch = () => {
-    fetchPage(1, searchQuery);
+    fetchPage(1, searchQuery, filterEstado);
   };
 
   const openForm = (record?: any) => {
@@ -123,8 +147,27 @@ const Usuarios: React.FC = () => {
       showToast(isEditing ? "¡Usuario actualizado!" : "¡Usuario registrado exitosamente!", "success");
       setShowForm(false);
       fetchPage(currentPage); 
+
     } catch (error: any) {
-      showToast(error.response?.data?.message || "Error al guardar. Verifica que la Matrícula o Correo no estén duplicados.", "danger");
+    showToast(error.response?.data?.message || "Error al guardar el registro.", "danger");
+    setIsLoading(false);
+  }
+  };
+
+  const saveAdminRecord = async () => {
+    if (!adminFormData.NombreUsuario || !adminFormData.ApellidoPaterno || !adminFormData.CorreoElectronico || !adminFormData.llave_infraestructura) {
+      return showToast("Nombre, Apellidos, Correo y Llave Maestra son obligatorios.", "danger");
+    }
+    setIsLoading(true);
+    try {
+      await api.post('/usuarios/registrar-admin', adminFormData);
+      showToast("¡Administrador de infraestructura creado con éxito!", "success");
+      setShowAdminForm(false);
+      setAdminFormData({ NombreUsuario: '', ApellidoPaterno: '', ApellidoMaterno: '', CorreoElectronico: '', Telefono: '', llave_infraestructura: '' });
+      await fetchPage(currentPage);
+    } catch (error: any) {
+      showToast(error.response?.data?.message || "Error al verificar la llave de infraestructura.", "danger");
+    } finally {
       setIsLoading(false);
     }
   };
@@ -151,7 +194,7 @@ const Usuarios: React.FC = () => {
   const exportToExcel = async () => {
     setIsLoading(true);
     try {
-      const res = await api.get(`/usuarios?all=true&search=${searchQuery}`);
+      const res = await api.get(`/usuarios?all=true&search=${searchQuery}&estado=${filterEstado}`);
       const ws = XLSX.utils.json_to_sheet((res.data.data || []).map((r: any) => ({
         'ID': r.Usuario_ID, 'Matrícula': r.Matricula, 'Usuario': `${r.NombreUsuario} ${r.ApellidoPaterno} ${r.ApellidoMaterno || ''}`.trim(),
         'Correo': r.CorreoElectronico, 'Teléfono': r.Telefono, 'Grupo': r.NombreGrupo || 'N/A', 'Estado': r.EstadoCuenta
@@ -164,7 +207,7 @@ const Usuarios: React.FC = () => {
   const exportToPDF = async () => {
     setIsLoading(true);
     try {
-      const res = await api.get(`/usuarios?all=true&search=${searchQuery}`);
+      const res = await api.get(`/usuarios?all=true&search=${searchQuery}&estado=${filterEstado}`);
       const doc = new jsPDF('landscape'); doc.text(`Directorio de Usuarios - UPVE`, 14, 15);
       autoTable(doc, { 
         startY: 20, 
@@ -254,18 +297,13 @@ const Usuarios: React.FC = () => {
                   </tr>
                   <tr>
                     <td><strong>Grupo</strong></td>
-                    <td>Escribe la nomenclatura del grupo para ver a todos los alumnos inscritos en él.</td>
-                    <td><code className="code-badge">TIID1-1</code></td>
+                    <td>Escribe el grupo correspondiente a la carrera y año de ingreso del alumno.</td>
+                    <td><code className="code-badge">TIID 2026</code></td>
                   </tr>
                   <tr>
                     <td><strong>Carrera</strong></td>
                     <td>Introduce las siglas oficiales de la carrera o una palabra clave de su nombre.</td>
                     <td><code className="code-badge">TIID</code> o <code className="code-badge">Tecnologías de la Información </code></td>
-                  </tr>
-                  <tr>
-                    <td><strong>Estado de Cuenta</strong></td>
-                    <td>Escribe textualmente "Activo" o "Inactivo" para filtrar las cuentas vigentes o bloqueadas.</td>
-                    <td><code className="code-badge">Activo</code> o <code className="code-badge">Inactivo</code></td>
                   </tr>
                 </tbody>
               </table>
@@ -303,6 +341,7 @@ const Usuarios: React.FC = () => {
               <IonButton fill="outline" color="danger" className="btn-export" onClick={exportToPDF} disabled={isLoading}><IonIcon icon={documentTextOutline} slot="start" /> PDF</IonButton>
               <IonButton fill="outline" color="success" className="btn-export" onClick={exportToExcel} disabled={isLoading}><IonIcon icon={gridOutline} slot="start" /> Excel</IonButton>
               <IonButton className="btn-nueva" onClick={() => showForm ? setShowForm(false) : openForm()} disabled={isLoading}><IonIcon icon={addOutline} slot="start" /> {showForm ? 'Cancelar' : 'Nuevo Usuario'}</IonButton>
+              <IonButton className="btn-nueva" onClick={() => { setShowForm(false); setShowAdminForm(!showAdminForm); }} disabled={isLoading}><IonIcon icon={addOutline} slot="start" /> {showAdminForm ? 'Cancelar' : 'Nuevo Admin'}</IonButton>
             </div>
           </div>
 
@@ -328,6 +367,19 @@ const Usuarios: React.FC = () => {
             <IonButton className="btn-buscar-lupa" onClick={handleSearch} disabled={isLoading}>
               <IonIcon icon={searchOutline} />
             </IonButton>
+
+            {/* SELECTOR DESPLEGABLE DE ESTADO */}
+            <select 
+              className="custom-input select-filtro-estado" 
+              value={filterEstado}
+              onChange={(e) => handleFilterChange(e.target.value)}
+              disabled={isLoading}
+              style={{ maxWidth: '160px', height: '42px', borderRadius: '8px', border: '1px solid #d1d5db', padding: '0 10px', fontWeight: '500', color: '#374151', backgroundColor: '#fff', cursor: 'pointer' }}
+            >
+              <option value="Todos">Todos</option>
+              <option value="Activo">Solo Activos</option>
+              <option value="Inactivo">Solo Inactivos</option>
+            </select>
             
             {/* BOTÓN DEL FOQUITO */}
             <button className="btn-bulb-help" onClick={() => setShowHelp(true)} title="Ver guía de búsqueda">
@@ -381,6 +433,25 @@ const Usuarios: React.FC = () => {
             </div>
           )}
 
+          {showAdminForm && (
+            <div className="usuarios-form-card" style={{ borderLeft: '5px solid #582c83' }}>
+              <h3 className="form-title" style={{ color: '#582c83' }}>Alta de Administrador (Llave de Entorno)</h3>
+              <div className="form-row margin-bottom-15">
+                <div className="form-group flex-2"><label>NOMBRE(S) *</label><input className="custom-input" value={adminFormData.NombreUsuario} onChange={e => setAdminFormData({...adminFormData, NombreUsuario: e.target.value})} /></div>
+                <div className="form-group flex-1"><label>APELLIDO PATERNO *</label><input className="custom-input" value={adminFormData.ApellidoPaterno} onChange={e => setAdminFormData({...adminFormData, ApellidoPaterno: e.target.value})} /></div>
+                <div className="form-group flex-1"><label>APELLIDO MATERNO</label><input className="custom-input" value={adminFormData.ApellidoMaterno} onChange={e => setAdminFormData({...adminFormData, ApellidoMaterno: e.target.value})} /></div>
+              </div>
+              <div className="form-row">
+                <div className="form-group flex-2"><label>CORREO INSTITUCIONAL *</label><input className="custom-input" type="email" value={adminFormData.CorreoElectronico} onChange={e => setAdminFormData({...adminFormData, CorreoElectronico: e.target.value})} /></div>
+                <div className="form-group flex-1"><label>TELÉFONO</label><input className="custom-input" value={adminFormData.Telefono} onChange={e => setAdminFormData({...adminFormData, Telefono: e.target.value})} /></div>
+                <div className="form-group flex-2"><label style={{ color: '#582c83', fontWeight: 'bold' }}>LLAVE DE INFRAESTRUCTURA (.ENV) *</label><input className="custom-input" type="password" placeholder="••••••••" value={adminFormData.llave_infraestructura} onChange={e => setAdminFormData({...adminFormData, llave_infraestructura: e.target.value})} /></div>
+                <div className="form-group align-bottom flex-1">
+                  <button className="btn-guardar-inline" style={{ background: '#582c83' }} onClick={saveAdminRecord} disabled={isLoading}>CREAR ADMIN</button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="usuarios-table-card">
             <div className="table-responsive">
               <table className="tabla-dinamica">
@@ -420,10 +491,23 @@ const Usuarios: React.FC = () => {
                       <td style={{ textAlign: 'center' }}>
                           <span className={`badge-estado ${r.EstadoCuenta === 'Activo' ? 'activo' : 'inactivo'}`}>{r.EstadoCuenta}</span>
                       </td>
-                      <td style={{ textAlign: 'center', minWidth: '120px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'nowrap', gap: '8px' }}>
+                      <td style={{ textAlign: 'center', minWidth: '160px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flexWrap: 'nowrap', gap: '6px' }}>
                           <IonButton className="btn-action btn-edit" fill="clear" onClick={() => openForm(r)} disabled={isLoading}><IonIcon icon={createOutline} /></IonButton>
                           <IonButton className="btn-action btn-delete" fill="clear" onClick={() => handleDelete(r.Usuario_ID)} disabled={isLoading}><IonIcon icon={trashOutline} /></IonButton>
+                          
+                          {/* 📜 BOTÓN CONSTANCIA */}
+                          <button
+                            style={{ backgroundColor: '#582c83', color: '#fff', border: 'none', padding: '5px 9px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                            title="Constancia de No Adeudo"
+                            onClick={() => {
+                              setUsuarioParaConstancia(r);
+                              setIsConstanciaModalOpen(true);
+                            }}
+                            disabled={isLoading}
+                          >
+                            📜 Constancia
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -448,6 +532,15 @@ const Usuarios: React.FC = () => {
 
           </div>
         </div>
+
+        {/* Modal para generar Constancia */}
+        <ModalConstanciaNoAdeudo
+          isOpen={isConstanciaModalOpen}
+          onClose={() => setIsConstanciaModalOpen(false)}
+          usuario={usuarioParaConstancia}
+          personalList={personalList}
+        />
+
       </IonContent>
     </IonPage>
   );

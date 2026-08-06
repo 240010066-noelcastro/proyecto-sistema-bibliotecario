@@ -29,6 +29,10 @@ const Inventario: React.FC = () => {
   const [lastPage, setLastPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
 
+  // CONTENEDORES PARA LISTAS ESTRUCTURADAS
+  const [estadosFisicosLista, setEstadosFisicosLista] = useState<any[]>([]);
+  const [disponibilidadesLista, setDisponibilidadesLista] = useState<any[]>([]);
+
   // Modal y Toast
   const [confirmDialog, setConfirmDialog] = useState({ show: false, title: '', message: '', onConfirm: () => {} });
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
@@ -44,6 +48,17 @@ const Inventario: React.FC = () => {
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString;
+    return date.toLocaleDateString('es-MX', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+  };
+
   useIonViewWillLeave(() => {
     setShowHelp(false);
   });
@@ -54,7 +69,7 @@ const Inventario: React.FC = () => {
     setShowForm(false);
     setIsEditing(false);
     setSearchQuery('');
-    setFiltroBaja('Todos'); // RESTAURADO
+    setFiltroBaja('Todos'); 
     setCurrentPage(1);
     setConfirmDialog({ show: false, title: '', message: '', onConfirm: () => {} });
     setFormData({ Unidad_ID: '', Recurso_ID: '', EstadoFisicoInicial: 'Bueno', EstadoDisponibilidad: 'Disponible' });
@@ -62,9 +77,39 @@ const Inventario: React.FC = () => {
     const fetchInitialData = async () => {
       setIsInitialLoading(true);
       try {
-        await fetchPage(1, '', 'Todos'); // RESTAURADO
+        await fetchPage(1, '', 'Todos'); 
         const resCat: any = await api.get('/catalogo?all=true');
         setCatalogoDB(Array.isArray(resCat.data?.data) ? resCat.data.data : []);
+
+        const resConfig = await api.get('/configuraciones/Inventario');
+        const content = resConfig.data?.data;
+        let rawFisicos = null;
+        let rawDisp = null;
+
+        if (content) {
+          if (Array.isArray(content)) {
+            const rowF = content.find((r: any) => r.Clave === 'estados_fisicos');
+            const rowD = content.find((r: any) => r.Clave === 'disponibilidades');
+            rawFisicos = rowF ? rowF.Valor : null;
+            rawDisp = rowD ? rowD.Valor : null;
+          } else {
+            rawFisicos = content.estados_fisicos;
+            rawDisp = content.disponibilidades;
+          }
+        }
+
+        const arrFisicos = Array.isArray(rawFisicos) ? rawFisicos : (typeof rawFisicos === 'string' ? JSON.parse(rawFisicos) : []);
+        const arrDisp = Array.isArray(rawDisp) ? rawDisp : (typeof rawDisp === 'string' ? JSON.parse(rawDisp) : []);
+        
+        setEstadosFisicosLista(arrFisicos.filter((item: any) => typeof item === 'string' ? true : !item.hidden));
+        const filtradosDisp = arrDisp.filter((item: any) => typeof item === 'string' ? true : !item.hidden);
+        setDisponibilidadesLista(filtradosDisp);
+
+        const opcionActiva = filtradosDisp.find((item: any) => typeof item === 'string' ? item === 'Disponible' : item.action === 'Disponible');
+        if (opcionActiva) {
+          const valorActivo = typeof opcionActiva === 'string' ? opcionActiva : (opcionActiva.label || '');
+          setFormData((prev: any) => ({ ...prev, EstadoDisponibilidad: valorActivo }));
+        }
       } catch (err) {
         console.error(err);
       } finally {
@@ -111,7 +156,10 @@ const Inventario: React.FC = () => {
       setFormData({ ...record, TituloCatalogoBuscado: `${record.Titulo} (${record.TipoRecurso})` });
     } else {
       setIsEditing(false);
-      setFormData({ Unidad_ID: '', Recurso_ID: '', EstadoFisicoInicial: 'Bueno', EstadoDisponibilidad: 'Disponible', TituloCatalogoBuscado: '' });
+      const opcionActiva = disponibilidadesLista.find((item: any) => typeof item === 'string' ? item === 'Disponible' : item.action === 'Disponible');
+      const valorActivo = opcionActiva ? (typeof opcionActiva === 'string' ? opcionActiva : (opcionActiva.label || '')) : 'Disponible';
+
+      setFormData({ Unidad_ID: '', Recurso_ID: '', EstadoFisicoInicial: 'Bueno', EstadoDisponibilidad: valorActivo, TituloCatalogoBuscado: '' });
     }
     setShowForm(true);
   };
@@ -173,7 +221,7 @@ const Inventario: React.FC = () => {
         const allData = res.data.data || [];
         const ws = XLSX.utils.json_to_sheet(allData.map((r: any) => ({
         'ID': r.Recurso_ID, 'Código Unidad': r.Unidad_ID, 'Título del Recurso': r.Titulo, 'Tipo de Recurso': r.TipoRecurso,
-        'Estado Físico': r.EstadoFisicoInicial, 'Disponibilidad': r.EstadoDisponibilidad
+        'Estado Físico': r.EstadoFisicoInicial, 'Disponibilidad': r.EstadoDisponibilidad, 'Fecha de Registro': formatDate(r.created_at)
         })));
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Inventario'); 
@@ -195,8 +243,8 @@ const Inventario: React.FC = () => {
         doc.text(`Inventario Físico - UPVE`, 14, 15);
         autoTable(doc, { 
             startY: 20, 
-            head: [['ID', 'Código Unidad', 'Título', 'Tipo', 'Estado Físico', 'Disponibilidad']], 
-            body: allData.map((r: any) => [r.Recurso_ID, r.Unidad_ID, r.Titulo, r.TipoRecurso, r.EstadoFisicoInicial, r.EstadoDisponibilidad]),
+            head: [['ID', 'Código Unidad', 'Título', 'Tipo', 'Estado Físico', 'Disponibilidad', 'Fecha Registro']], 
+            body: allData.map((r: any) => [r.Recurso_ID, r.Unidad_ID, r.Titulo, r.TipoRecurso, r.EstadoFisicoInicial, r.EstadoDisponibilidad, formatDate(r.created_at)]),
             theme: 'grid', 
             headStyles: { fillColor: [88, 44, 131] } 
         });
@@ -273,6 +321,8 @@ const Inventario: React.FC = () => {
                   <tr><td><strong>Tipo de Recurso</strong></td><td>Filtra escribiendo a qué módulo pertenece.</td><td><code className="code-badge">Libro</code> o <code className="code-badge">Tesis</code></td></tr>
                   <tr><td><strong>Estado Físico</strong></td><td>Busca por la condición física de la copia.</td><td><code className="code-badge">Bueno</code> o <code className="code-badge">Dañado</code></td></tr>
                   <tr><td><strong>Disponibilidad</strong></td><td>Escribe la situación actual en almacén.</td><td><code className="code-badge">Prestado</code> o <code className="code-badge">Disponible</code></td></tr>
+                  <tr><td><strong>Fecha de Registro</strong></td><td>Busca por año, año/mes o fecha específica de alta.</td><td><code className="code-badge">2026</code>, <code className="code-badge">07/2026</code> o <code className="code-badge">20/07/2026</code></td></tr>
+                  <tr><td><strong>Rango de Fechas</strong></td><td>Filtra un periodo específico separando dos fechas con " a ".</td><td><code className="code-badge">13/07/2026 a 20/07/2026</code></td></tr>
                 </tbody>
               </table>
               <p style={{ fontSize: '12px', color: '#666', marginTop: '10px', fontStyle: 'italic' }}>
@@ -286,7 +336,7 @@ const Inventario: React.FC = () => {
           
           <div className="main-top-header">
             <div>
-              <h1><IonIcon icon={libraryOutline} className="header-icon" /> Inventario Físico</h1>
+              <h1><IonIcon icon={libraryOutline} className="header-icon" /> Inventario</h1>
               <p>Control de etiquetas y copias físicas de los recursos del catálogo.</p>
             </div>
             <div className="header-actions">
@@ -304,7 +354,7 @@ const Inventario: React.FC = () => {
               {/* 1. BUSCADOR EXPANDIDO */}
               <IonSearchbar 
                 style={{ flex: 1, minWidth: '300px', padding: 0 }}
-                placeholder="Buscar por código, título, tipo o estado..."
+                placeholder="Buscar por código, título, estado o fecha (ej: 13/07/2026 a 20/07/2026)..."
                 value={searchQuery}
                 onIonInput={(e: any) => {
                   const newValue = e.target.value || '';
@@ -319,7 +369,12 @@ const Inventario: React.FC = () => {
                 disabled={isProcessing || isInitialLoading}
               />
 
-              {/* 2. FILTRO DE BAJAS */}
+              {/* 2. LUPA DE BÚSQUEDA */}
+              <IonButton className="btn-buscar-lupa" onClick={handleSearch} disabled={isProcessing || isInitialLoading} style={{ margin: 0, height: '42px', width: '42px', '--border-radius': '10px' }}>
+                <IonIcon icon={searchOutline} />
+              </IonButton>
+
+              {/* 3. FILTRO DE BAJAS */}
               <select 
                 className="custom-input" 
                 style={{ height: '42px', width: '165px', padding: '0 10px', borderRadius: '10px', fontSize: '13px', cursor: 'pointer', flexShrink: 0 }}
@@ -334,11 +389,6 @@ const Inventario: React.FC = () => {
                 <option value="Si">Baja</option>
                 <option value="No">Sin Baja</option>
               </select>
-
-              {/* 3. LUPA DE BÚSQUEDA */}
-              <IonButton className="btn-buscar-lupa" onClick={handleSearch} disabled={isProcessing || isInitialLoading} style={{ margin: 0, height: '42px', width: '42px', '--border-radius': '10px' }}>
-                <IonIcon icon={searchOutline} />
-              </IonButton>
 
               {/* 4. FOQUITO DE AYUDA */}
               <button className="btn-bulb-help" onClick={() => setShowHelp(true)} title="Ver guía de búsqueda" style={{ flexShrink: 0, padding: '0 5px' }}>
@@ -367,7 +417,7 @@ const Inventario: React.FC = () => {
                 </div>
 
                 <div className="form-group flex-2" style={{ position: 'relative' }}>
-                  <label>RECURSO DEL CATÁLOGO AL QUE PERTENECE *</label>
+                  <label>TÍTULO Y CATÁLOGO AL QUE PERTENECE *</label>
                   
                   {/* Este es el Input donde el usuario escribirá (guardamos el título solo para mostrarlo) */}
                   <input 
@@ -385,7 +435,7 @@ const Inventario: React.FC = () => {
                   {formData.Recurso_ID ? (
                       <span style={{ fontSize: '11px', color: '#16a34a', marginTop: '4px', fontWeight: 'bold' }}>✅ Recurso vinculado (ID: {formData.Recurso_ID})</span>
                   ) : (
-                      <span style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>Debes seleccionar una opción de la lista.</span>
+                      <span style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>Escribe el título y selecciona una opción de la lista.</span>
                   )}
 
                   {/* La caja flotante con los resultados (igual que en los autores) */}
@@ -429,21 +479,36 @@ const Inventario: React.FC = () => {
                 <div className="form-group flex-1">
                   <label>ESTADO FÍSICO *</label>
                   <select className="custom-input select-input" value={formData.EstadoFisicoInicial || ''} onChange={e => setFormData({...formData, EstadoFisicoInicial: e.target.value})}>
-                    <option value="Nuevo">Nuevo</option>
-                    <option value="Bueno">Bueno</option>
-                    <option value="Regular">Regular</option>
-                    <option value="Malo / Dañado">Malo / Dañado</option>
+                    <option value="" disabled>-- Seleccionar --</option>
+                    {estadosFisicosLista.length > 0 ? estadosFisicosLista.map((item, idx) => (
+                      <option key={idx} value={typeof item === 'string' ? item : (item.label || '')}>
+                        {typeof item === 'string' ? item : (item.label || '')}
+                      </option>
+                    )) : (
+                      <>
+                        <option value="Nuevo">Nuevo</option><option value="Bueno">Bueno</option>
+                        <option value="Regular">Regular</option><option value="Malo / Dañado">Malo / Dañado</option>
+                      </>
+                    )}
                   </select>
                 </div>
 
                 <div className="form-group flex-1">
                   <label>DISPONIBILIDAD ACTUAL *</label>
                   <select className="custom-input select-input" value={formData.EstadoDisponibilidad || ''} onChange={e => setFormData({...formData, EstadoDisponibilidad: e.target.value})}>
-                    <option value="Disponible">Disponible en Estante</option>
-                    <option value="Prestado">Prestado</option>
-                    <option value="Mantenimiento">En Mantenimiento</option>
-                    <option value="Extraviado">Extraviado</option>
-                    <option value="Baja">Dado de Baja</option>
+                    <option value="" disabled>-- Seleccionar --</option>
+                    {disponibilidadesLista.length > 0 ? disponibilidadesLista.map((item, idx) => (
+                      /* 🏛️ ELÁSTICO: Cambiamos item.action por item.label para enviar el texto personalizado a la BD */
+                      <option key={idx} value={typeof item === 'string' ? item : (item.label || '')}>
+                        {typeof item === 'string' ? item : (item.label || '')}
+                      </option>
+                    )) : (
+                      <>
+                        <option value="Disponible">Disponible en Estante</option><option value="Prestado">Prestado</option>
+                        <option value="Mantenimiento">En Mantenimiento</option><option value="Extraviado">Extraviado</option>
+                        <option value="Baja">Dado de Baja</option>
+                      </>
+                    )}
                   </select>
                 </div>
 
@@ -464,6 +529,7 @@ const Inventario: React.FC = () => {
                     <th>TÍTULO DEL RECURSO</th>
                     <th>TIPO</th>
                     <th>ESTADO FÍSICO</th>
+                    <th style={{ textAlign: 'center' }}>FECHA REGISTRO</th>
                     <th style={{ textAlign: 'center' }}>DISPONIBILIDAD</th>
                     <th style={{ textAlign: 'center' }}>ACCIONES</th>
                   </tr>
@@ -480,7 +546,12 @@ const Inventario: React.FC = () => {
                       <td style={{ color: '#374151', fontWeight: '500' }}>{r.Titulo}</td>
                       <td>{r.TipoRecurso}</td>
                       <td>{r.EstadoFisicoInicial}</td>
-                      <td style={{ textAlign: 'center' }}><span className={getDisponibilidadBadge(r.EstadoDisponibilidad)}>{r.EstadoDisponibilidad}</span></td>
+
+                      <td style={{ textAlign: 'center', fontSize: '13px', color: '#4b5563', whiteSpace: 'nowrap' }}>
+                        {formatDate(r.created_at)}
+                      </td>
+
+                      <td style={{ textAlign: 'center' }}><span className={getDisponibilidadBadge(r.EstadoDisponibilidad_Logico)}>{r.EstadoDisponibilidad.replace(/"/g, '')}</span></td>
                       <td style={{ textAlign: 'center', minWidth: '120px' }}>
                         <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'nowrap', gap: '8px' }}>
                           <IonButton className="btn-action btn-edit" fill="clear" onClick={() => openForm(r)} disabled={isProcessing}><IonIcon icon={createOutline} /></IonButton>
@@ -490,7 +561,7 @@ const Inventario: React.FC = () => {
                     </tr>
                   ))}
                   {records.length === 0 && (
-                    <tr><td colSpan={7} className="empty-state">No hay copias físicas registradas o que coincidan con la búsqueda.</td></tr>
+                    <tr><td colSpan={8} className="empty-state">No hay copias físicas registradas o que coincidan con la búsqueda.</td></tr>
                   )}
                 </tbody>
               </table>

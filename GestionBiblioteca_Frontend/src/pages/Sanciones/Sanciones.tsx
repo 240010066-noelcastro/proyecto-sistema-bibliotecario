@@ -18,9 +18,7 @@ const Sanciones: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('Todos'); 
   
-  // NUEVOS ESTADOS: Rango de Fechas Personalizado y Bajas
-  const [fechaInicio, setFechaInicio] = useState('');
-  const [fechaFin, setFechaFin] = useState('');
+  // NUEVO ESTADO: Filtro por Bajas
   const [filtroBaja, setFiltroBaja] = useState('Todos');
 
   const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -38,6 +36,10 @@ const Sanciones: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [lastPage, setLastPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
+
+  // NUEVAS VARIABLES DE ESTADO COMPLETAS PARA LAS LISTAS DE MULTAS DINÁMICAS
+  const [estadosSancionLista, setEstadosSancionLista] = useState<any[]>([]);
+  const [tiposSancionLista, setTiposSancionLista] = useState<any[]>([]);
   
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [confirmDialog, setConfirmDialog] = useState({ show: false, title: '', message: '', onConfirm: () => {} });
@@ -45,7 +47,18 @@ const Sanciones: React.FC = () => {
   // FECHAS ACTUALES PARA BLOQUEOS Y FILTROS
   const currentYear = new Date().getFullYear();
   const tzOffset = (new Date()).getTimezoneOffset() * 60000; 
-  const todayDateString = (new Date(Date.now() - tzOffset)).toISOString().split('T')[0]; // Fecha YYYY-MM-DD local
+  const todayDateString = (new Date(Date.now() - tzOffset)).toISOString().split('T')[0];
+
+  // Convierte "YYYY-MM-DD" o "YYYY-MM-DD HH:MM:SS" a "DD/MM/YYYY" de forma segura sin problemas de zona horaria
+  const formatFechaLatina = (fechaStr: string) => {
+    if (!fechaStr) return '-';
+    const soloFecha = fechaStr.split(' ')[0];
+    const partes = soloFecha.split('-');
+    if (partes.length === 3) {
+      return `${partes[2]}/${partes[1]}/${partes[0]}`;
+    }
+    return soloFecha;
+  };
 
   const showToast = (message: string, type: 'success' | 'danger' = 'success') => {
     setToast({ show: true, message, type });
@@ -75,8 +88,6 @@ const Sanciones: React.FC = () => {
     setMatriculaBuscada('');
     setSearchQuery('');
     setFiltroTipo('Todos');
-    setFechaInicio('');
-    setFechaFin('');
     setFiltroBaja('Todos');
     setConfirmDialog({ show: false, title: '', message: '', onConfirm: () => {} });
     setCurrentPage(1);
@@ -92,9 +103,41 @@ const Sanciones: React.FC = () => {
     const loadData = async () => {
         setIsInitialLoading(true);
         try {
-            await fetchPage(1, '', 'Todos', '', '', 'Todos');
+            await fetchPage(1, '', 'Todos', 'Todos');
             const resCandidatos: any = await api.get('/sanciones/candidatos');
             setCandidatosDB(resCandidatos.data?.data || []);
+
+            const resConfig = await api.get('/configuraciones/Sanciones');
+            const content = resConfig.data?.data;
+            let rawEstados = null;
+            let rawTipos = null;
+
+            if (content) {
+              if (Array.isArray(content)) {
+                const rowE = content.find((r: any) => r.Clave === 'estados_sancion');
+                const rowT = content.find((r: any) => r.Clave === 'tipos_sancion');
+                rawEstados = rowE ? rowE.Valor : null;
+                rawTipos = rowT ? rowT.Valor : null;
+              } else {
+                rawEstados = content.estados_sancion;
+                rawTipos = content.tipos_sancion;
+              }
+            }
+
+            const arrSanciones = Array.isArray(rawEstados) ? rawEstados : (typeof rawEstados === 'string' ? JSON.parse(rawEstados) : []);
+            const arrTiposSancion = Array.isArray(rawTipos) ? rawTipos : (typeof rawTipos === 'string' ? JSON.parse(rawTipos) : []);
+            
+            // REQUERIMIENTO 5: Remueve dinámicamente de la interfaz operativa las multas y cobros apagados desde Ajustes
+            const filtradosSanciones = arrSanciones.filter((item: any) => typeof item === 'string' ? true : !item.hidden);
+            setEstadosSancionLista(filtradosSanciones);
+            setTiposSancionLista(arrTiposSancion.filter((item: any) => typeof item === 'string' ? true : !item.hidden));
+
+            /* 🏛️ ELÁSTICO: Sincroniza el estado inicial con la etiqueta personalizada de "Pendiente" (ej: "En curso") */
+            const opcionActiva = filtradosSanciones.find((item: any) => typeof item === 'string' ? item === 'Pendiente' : item.action === 'Pendiente');
+            if (opcionActiva) {
+              const valorActivo = typeof opcionActiva === 'string' ? opcionActiva : (opcionActiva.label || '');
+              setFormData((prev: any) => ({ ...prev, EstadoSancion: valorActivo }));
+            }
         } catch (error) {
             console.error(error);
         } finally {
@@ -104,10 +147,10 @@ const Sanciones: React.FC = () => {
     loadData();
   });
 
-  const fetchPage = async (page: number, search = searchQuery, tipo = filtroTipo, fInicio = fechaInicio, fFin = fechaFin, baja = filtroBaja) => {
+  const fetchPage = async (page: number, search = searchQuery, tipo = filtroTipo, baja = filtroBaja) => {
     setIsProcessing(true); 
     try {
-      const res: any = await api.get(`/sanciones?page=${page}&search=${search}&filtroTipo=${tipo}&fechaInicio=${fInicio}&fechaFin=${fFin}&filtroBaja=${baja}`);
+      const res: any = await api.get(`/sanciones?page=${page}&search=${search}&filtroTipo=${tipo}&filtroBaja=${baja}`);
       setRecords(res.data?.data?.data || []);
       setCurrentPage(res.data?.data?.current_page || 1);
       setLastPage(res.data?.data?.last_page || 1);
@@ -120,7 +163,7 @@ const Sanciones: React.FC = () => {
   };
 
   const handleSearch = () => {
-    fetchPage(1, searchQuery, filtroTipo, fechaInicio, fechaFin, filtroBaja);
+    fetchPage(1, searchQuery, filtroTipo, filtroBaja);
   };
 
   useEffect(() => {
@@ -150,33 +193,46 @@ const Sanciones: React.FC = () => {
   const openForm = (record?: any) => {
     setMatriculaBuscada('');
     if (record) {
-      setIsEditing(true);
-      setFormData({ 
-        Sancion_ID: record.Sancion_ID,
-        Usuario_ID: record.Usuario_ID,
-        NombreEstudianteText: record.NombreEstudiante,
-        MatriculaText: record.Matricula,
-        DetallesPrestamo_ID: record.DetallesPrestamo_ID || '',
-        TipoSancion: record.TipoSancion,
-        MontoPago: record.MontoPago,
-        EstadoSancion: record.EstadoSancion,
-        FechaGeneracion: record.FechaGeneracion ? record.FechaGeneracion.split(' ')[0] : '',
-        FechaPago: record.FechaPago ? record.FechaPago.split(' ')[0] : '', // NUEVO CARGADOR
-        Observaciones: record.Observaciones || '',
-        DarDeBaja: false,
-        Unidad_ID_Temp: record.Unidad_ID,  
-        Titulo_Temp: record.Titulo
-      });
-    } else {
-      setIsEditing(false);
-      setFormData({ 
-        Sancion_ID: null, Usuario_ID: '', NombreEstudianteText: '', MatriculaText: '', DetallesPrestamo_ID: '',
-        TipoSancion: 'Material Dañado', MontoPago: '', EstadoSancion: 'Pendiente', 
-        FechaGeneracion: todayDateString,
-        FechaPago: '', 
-        Observaciones: '', DarDeBaja: false
-      });
+    setIsEditing(true);
+
+    /* 🏛️ TRADUCCIÓN ELÁSTICA: Si el registro viejo viene de la BD como "Pendiente", lo cambiamos a tu etiqueta activa (ej: "En curso") */
+    let estadoVisual = record.EstadoSancion;
+    if (estadoVisual === 'Pendiente') {
+      const opcion = estadosSancionLista.find((item: any) => typeof item === 'string' ? item === 'Pendiente' : item.action === 'Pendiente');
+      if (opcion && typeof opcion !== 'string') estadoVisual = opcion.label;
     }
+
+    setFormData({ 
+      Sancion_ID: record.Sancion_ID,
+      Usuario_ID: record.Usuario_ID,
+      NombreEstudianteText: record.NombreEstudiante,
+      MatriculaText: record.Matricula,
+      DetallesPrestamo_ID: record.DetallesPrestamo_ID || '',
+      TipoSancion: record.TipoSancion,
+      MontoPago: record.MontoPago,
+      EstadoSancion: estadoVisual,
+      FechaGeneracion: record.FechaGeneracion ? record.FechaGeneracion.split(' ')[0] : '',
+      FechaPago: record.FechaPago ? record.FechaPago.split(' ')[0] : '', 
+      Observaciones: record.Observaciones || '',
+      DarDeBaja: false,
+      Unidad_ID_Temp: record.Unidad_ID,  
+      Titulo_Temp: record.Titulo
+    });
+  } else {
+    setIsEditing(false);
+
+    /* 🏛️ ELÁSTICO: Busca la etiqueta activa para la acción base "Pendiente" al crear un registro nuevo */
+    const opcionActiva = estadosSancionLista.find((item: any) => typeof item === 'string' ? item === 'Pendiente' : item.action === 'Pendiente');
+    const valorActivo = opcionActiva ? (typeof opcionActiva === 'string' ? opcionActiva : (opcionActiva.label || '')) : 'Pendiente';
+
+    setFormData({ 
+      Sancion_ID: null, Usuario_ID: '', NombreEstudianteText: '', MatriculaText: '', DetallesPrestamo_ID: '',
+      TipoSancion: 'Material Dañado', MontoPago: '', EstadoSancion: valorActivo, 
+      FechaGeneracion: todayDateString,
+      FechaPago: '', 
+      Observaciones: '', DarDeBaja: false
+    });
+  }
     setShowForm(true);
   };
 
@@ -222,7 +278,7 @@ const Sanciones: React.FC = () => {
       
       showToast(isEditing ? "¡Sanción actualizada!" : "¡Sanción registrada exitosamente!", "success");
       setShowForm(false);
-      fetchPage(currentPage, searchQuery, filtroTipo, fechaInicio, fechaFin, filtroBaja); 
+      fetchPage(currentPage, searchQuery, filtroTipo, filtroBaja); 
       
       api.get('/sanciones/candidatos').then((res: any) => setCandidatosDB(res.data?.data || []));
     } catch (error: any) {
@@ -242,7 +298,7 @@ const Sanciones: React.FC = () => {
         setIsProcessing(true);
         try {
           await api.delete(`/sanciones/${id}`);
-          fetchPage(currentPage, searchQuery, filtroTipo, fechaInicio, fechaFin, filtroBaja);
+          fetchPage(currentPage, searchQuery, filtroTipo, filtroBaja);
           showToast("Sanción eliminada.", "success");
         } catch (error) {
           showToast("No se pudo eliminar la sanción.", "danger");
@@ -253,19 +309,23 @@ const Sanciones: React.FC = () => {
     });
   };
 
-  const getEstadoBadgeClass = (estado: string) => {
-      switch(estado) {
-          case 'Pendiente': return 'badge-estado pendiente';
-          case 'Pagado': return 'badge-estado pagado';
-          case 'Condonado': return 'badge-estado condonado';
-          default: return 'badge-estado';
+  const getEstadoBadgeClass = (estadoLogico: string) => {
+      switch(estadoLogico) {
+          case 'Pendiente': 
+              return 'badge-estado en-curso';
+          case 'Pagado': 
+              return 'badge-estado pagado';
+          case 'Condonado': 
+              return 'badge-estado condonado';
+          default: 
+              return 'badge-estado';
       }
   };
 
   const exportToExcel = async () => {
     setIsProcessing(true); 
     try {
-      const res = await api.get(`/sanciones?all=true&search=${searchQuery}&filtroTipo=${filtroTipo}&fechaInicio=${fechaInicio}&fechaFin=${fechaFin}&filtroBaja=${filtroBaja}`);
+      const res = await api.get(`/sanciones?all=true&search=${searchQuery}&filtroTipo=${filtroTipo}&filtroBaja=${filtroBaja}`);
       const ws = XLSX.utils.json_to_sheet((res.data.data || []).map((r:any) => ({
         ID: r.Sancion_ID,
         'Estudiante': r.NombreEstudiante,
@@ -275,7 +335,7 @@ const Sanciones: React.FC = () => {
         'Tipo de Recurso': r.TipoRecurso || 'N/A',
         'Tipo de Sanción': r.TipoSancion,
         'Monto': `$${r.MontoPago}`,
-        'Fecha Generación': r.FechaGeneracion ? r.FechaGeneracion.split(' ')[0] : '-',
+        'Fecha Generación': formatFechaLatina(r.FechaGeneracion),
         'Estado': r.EstadoSancion,
         'Dado de Baja': r.EstadoDisponibilidad === 'Baja' ? 'SÍ' : 'NO'
       })));
@@ -291,7 +351,7 @@ const Sanciones: React.FC = () => {
   const exportToPDF = async () => {
     setIsProcessing(true); 
     try {
-      const res = await api.get(`/sanciones?all=true&search=${searchQuery}&filtroTipo=${filtroTipo}&fechaInicio=${fechaInicio}&fechaFin=${fechaFin}&filtroBaja=${filtroBaja}`);
+      const res = await api.get(`/sanciones?all=true&search=${searchQuery}&filtroTipo=${filtroTipo}&filtroBaja=${filtroBaja}`);
       const doc = new jsPDF('landscape');
       doc.text(`Historial de Sanciones - UPVE`, 14, 15);
       
@@ -303,7 +363,7 @@ const Sanciones: React.FC = () => {
           `${r.Unidad_ID || 'S/N'} - ${r.Titulo || ''}`,
           r.TipoSancion, 
           `$${r.MontoPago}`, 
-          r.FechaGeneracion ? r.FechaGeneracion.split(' ')[0] : '-',
+          formatFechaLatina(r.FechaGeneracion),
           r.EstadoSancion,
           r.EstadoDisponibilidad === 'Baja' ? 'SÍ' : 'NO'
       ]);
@@ -382,7 +442,8 @@ const Sanciones: React.FC = () => {
                   <tr><td><strong>Código / Recurso</strong></td><td>Introduce el código de unidad o el título del recurso.</td><td><code className="code-badge">212112</code> o <code className="code-badge">Tecnología</code></td></tr>
                   <tr><td><strong>Tipo Sanción</strong></td><td>Busca por el motivo/naturaleza de la multa.</td><td><code className="code-badge">Material Dañado</code></td></tr>
                   <tr><td><strong>Monto</strong></td><td>Introduce el costo numérico exacto del cargo.</td><td><code className="code-badge">100.00</code></td></tr>
-                  <tr><td><strong>Fecha</strong></td><td>Filtra tecleando el año, mes o día de la infracción.</td><td><code className="code-badge">2026-05-29</code></td></tr>
+                  <tr><td><strong>Fecha Generación</strong></td><td>Filtra tecleando el año, mes/año o fecha exacta en formato latino.</td><td><code className="code-badge">2026</code>, <code className="code-badge">07/2026</code> o <code className="code-badge">20/07/2026</code></td></tr>
+                  <tr><td><strong>Rango de Fechas</strong></td><td>Filtra un periodo específico separando dos fechas con " a ".</td><td><code className="code-badge">13/07/2026 a 20/07/2026</code></td></tr>
                   <tr><td><strong>Estado</strong></td><td>Busca por la condición actual del cobro.</td><td><code className="code-badge">Pendiente</code> o <code className="code-badge">Pagado</code></td></tr>
                   <tr><td><strong>Baja</strong></td><td>Filtra si el libro dañado fue descartado del inventario.</td><td><code className="code-badge">SÍ</code> o <code className="code-badge">NO</code></td></tr>
                 </tbody>
@@ -423,32 +484,37 @@ const Sanciones: React.FC = () => {
                 {/* 1. BUSCADOR */}
                 <IonSearchbar 
                 style={{ flex: 1, minWidth: '200px', padding: 0 }}
-                placeholder="Buscar matrícula, alumno, fecha..."
+                placeholder="Buscar matrícula, alumno, estado o fecha (ej: 13/07/2026 a 20/07/2026)..."
                 value={searchQuery}
                 onIonInput={(e: any) => {
-                  const newValue = e.target.value || '';
-                  setSearchQuery(newValue);
-                  if (newValue.trim() === '') {
-                    fetchPage(1, '', filtroTipo, fechaInicio, fechaFin, filtroBaja);
-                  }
+                const newValue = e.target.value || '';
+                setSearchQuery(newValue);
+                if (newValue.trim() === '') {
+                  fetchPage(1, '', filtroTipo, filtroBaja);
+                }
                 }}
                 onKeyDown={(e: any) => e.key === 'Enter' && handleSearch()}
                 onIonClear={() => {
                   setSearchQuery('');
-                  fetchPage(1, '', filtroTipo, fechaInicio, fechaFin, filtroBaja);
+                  fetchPage(1, '', filtroTipo, filtroBaja);
                 }}
                 disabled={isProcessing || isInitialLoading}
                 />
 
-                {/* 2. SELECTOR DE TIPO */}
+                {/* 2. LUPA DE BÚSQUEDA */}
+                <IonButton className="btn-buscar-lupa" onClick={handleSearch} disabled={isProcessing || isInitialLoading} style={{ margin: 0, height: '44px', '--border-radius': '10px' }}>
+                  <IonIcon icon={searchOutline} />
+                </IonButton>
+
+                {/* 3. SELECTOR DE TIPO */}
                 <select 
                     className="custom-input" 
                     style={{ height: '44px', width: '150px', padding: '0 10px', borderRadius: '10px', fontSize: '12px', cursor: 'pointer', flexShrink: 0 }}
                     value={filtroTipo} 
                     onChange={e => {
-                      setFiltroTipo(e.target.value);
-                      fetchPage(1, searchQuery, e.target.value, fechaInicio, fechaFin, filtroBaja);
-                    }}
+                    setFiltroTipo(e.target.value);
+                    fetchPage(1, searchQuery, e.target.value, filtroBaja);
+                  }}
                     disabled={isProcessing || isInitialLoading}
                 >
                     <option value="Todos">Todos los recursos</option>
@@ -462,42 +528,15 @@ const Sanciones: React.FC = () => {
                     <option value="Dispositivo de Conectividad">Conectividad</option>
                 </select>
 
-                {/* 3. CONTENEDOR UNIFICADO DE FECHAS */}
-                <div className="custom-input" style={{ display: 'flex', alignItems: 'center', gap: '4px', height: '44px', padding: '0 8px', color: '#4b5563', fontSize: '12px', fontWeight: 600, borderRadius: '10px', width: 'max-content', flexShrink: 0 }}>
-                  <span>Desde:</span>
-                  <input 
-                    type="date" 
-                    style={{ border: 'none', outline: 'none', background: 'transparent', color: '#374151', fontSize: '12px', width: '105px' }} 
-                    value={fechaInicio}
-                    onChange={e => {
-                      setFechaInicio(e.target.value);
-                      fetchPage(1, searchQuery, filtroTipo, e.target.value, fechaFin, filtroBaja);
-                    }}
-                    disabled={isProcessing || isInitialLoading}
-                  />
-                  <div style={{ height: '20px', width: '1px', backgroundColor: '#d1d5db', margin: '0 2px' }}></div>
-                  <span>Hasta:</span>
-                  <input 
-                    type="date" 
-                    style={{ border: 'none', outline: 'none', background: 'transparent', color: '#374151', fontSize: '12px', width: '105px' }} 
-                    value={fechaFin}
-                    onChange={e => {
-                      setFechaFin(e.target.value);
-                      fetchPage(1, searchQuery, filtroTipo, fechaInicio, e.target.value, filtroBaja);
-                    }}
-                    disabled={isProcessing || isInitialLoading}
-                  />
-                </div>
-
                 {/* 4. SELECTOR BAJA */}
                 <select 
                   className="custom-input" 
                   style={{ height: '44px', width: '145px', padding: '0 10px', borderRadius: '10px', fontSize: '12px', cursor: 'pointer', flexShrink: 0 }}
                   value={filtroBaja}
                   onChange={e => {
-                    setFiltroBaja(e.target.value);
-                    fetchPage(1, searchQuery, filtroTipo, fechaInicio, fechaFin, e.target.value);
-                  }}
+                  setFiltroBaja(e.target.value);
+                  fetchPage(1, searchQuery, filtroTipo, e.target.value);
+                   }}
                   disabled={isProcessing || isInitialLoading}
                 >
                   <option value="Todos">Bajas: Mostrar Todo</option>
@@ -505,12 +544,7 @@ const Sanciones: React.FC = () => {
                   <option value="No">Sin Baja</option>
                 </select>
 
-                {/* 5. LUPA DE BÚSQUEDA */}
-                <IonButton className="btn-buscar-lupa" onClick={handleSearch} disabled={isProcessing || isInitialLoading} style={{ margin: 0, height: '44px', '--border-radius': '10px' }}>
-                  <IonIcon icon={searchOutline} />
-                </IonButton>
-
-                {/* 6. FOQUITO DE AYUDA */}
+                {/* 5. FOQUITO DE AYUDA */}
                 <button className="btn-bulb-help" onClick={() => setShowHelp(true)} title="Ver guía de búsqueda" style={{ flexShrink: 0, padding: '0 5px' }}>
                   <IonIcon icon={bulbOutline} />
                 </button>
@@ -557,16 +591,25 @@ const Sanciones: React.FC = () => {
                 </div>
 
                 <div className="form-group flex-1">
-                  <label>TIPO DE SANCIÓN *</label>
-                  <select 
-                    className="custom-input select-input" 
-                    value={formData.TipoSancion || ''} 
-                    onChange={e => setFormData({...formData, TipoSancion: e.target.value})}
-                  >
-                    <option value="Material Dañado">Material Dañado</option>
-                    <option value="Material Extraviado">Material Extraviado</option>
-                  </select>
-                </div>
+                          <label>TIPO DE SANCIÓN *</label>
+                          <select 
+                            className="custom-input select-input" 
+                            value={formData.TipoSancion || ''} 
+                            onChange={e => setFormData({...formData, TipoSancion: e.target.value})}
+                          >
+                            <option value="" disabled>-- Seleccionar --</option>
+                            {tiposSancionLista.length > 0 ? tiposSancionLista.map((item, idx) => (
+                              <option key={idx} value={typeof item === 'string' ? item : (item.label || '')}>
+                                {typeof item === 'string' ? item : (item.label || '')}
+                              </option>
+                            )) : (
+                              <>
+                                <option value="Material Dañado">Material Dañado</option>
+                                <option value="Material Extraviado">Material Extraviado</option>
+                              </>
+                            )}
+                          </select>
+                        </div>
               </div>
 
               <div className="form-row" style={{ marginTop: '15px' }}>
@@ -627,7 +670,6 @@ const Sanciones: React.FC = () => {
               </div>
 
               <div className="form-row" style={{ marginTop: '15px' }}>
-                
                 <div className="form-group flex-1">
                   <label>ESTADO DE PAGO *</label>
                   <select 
@@ -638,14 +680,22 @@ const Sanciones: React.FC = () => {
                       setFormData({
                         ...formData,
                         EstadoSancion: nuevoEstado,
-                        // Si es Pagado o Condonado, le asignamos la fecha de hoy automáticamente
                         FechaPago: ['Pagado', 'Condonado'].includes(nuevoEstado) ? todayDateString : ''
                       });
                     }}
                   >
-                    <option value="Pendiente">Pendiente</option>
-                    <option value="Pagado">Pagado</option>
-                    <option value="Condonado">Condonado (Perdonado)</option>
+                    <option value="" disabled>-- Seleccionar --</option>
+                    {estadosSancionLista.length > 0 ? estadosSancionLista.map((item, idx) => (
+                      /* 🏛️ SOLUCIÓN: Usamos item.label para que el valor coincida de forma literal con "En curso" */
+                      <option key={idx} value={typeof item === 'string' ? item : (item.label || '')}>
+                        {typeof item === 'string' ? item : (item.label || '')}
+                      </option>
+                    )) : (
+                      <>
+                        <option value="Pendiente">Pendiente</option><option value="Pagado">Pagado</option>
+                        <option value="Condonado">Condonado (Perdonado)</option>
+                      </>
+                    )}
                   </select>
                 </div>
 
@@ -656,8 +706,8 @@ const Sanciones: React.FC = () => {
                     type="date" 
                     max={todayDateString} 
                     value={formData.FechaGeneracion} 
-                    disabled={true} // BLINDADO: El sistema ya asigna la fecha real de creación
-                    style={{ backgroundColor: '#f3f4f6', color: '#6b7280', cursor: 'not-allowed' }} // Estilo visual de bloqueo
+                    readOnly={true} // <--- CAMBIA ESTO
+                    style={{ backgroundColor: '#f3f4f6', color: '#6b7280', cursor: 'default' }} 
                     onChange={e => setFormData({...formData, FechaGeneracion: e.target.value})} 
                   />
                 </div>
@@ -750,21 +800,22 @@ const Sanciones: React.FC = () => {
                       <td style={{ fontWeight: 'bold', color: '#374151', verticalAlign: 'middle' }}>${r.MontoPago}</td>
                       
                       <td style={{ textAlign: 'center', verticalAlign: 'middle', fontSize: '13px', color: '#4b5563', whiteSpace: 'nowrap' }}>
-                        {r.FechaGeneracion ? r.FechaGeneracion.split(' ')[0] : '-'}
+                        {formatFechaLatina(r.FechaGeneracion)}
                       </td>
 
                       <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
-                        <span className={getEstadoBadgeClass(r.EstadoSancion)}>
+                        <span className={getEstadoBadgeClass(r.EstadoSancion_Logico || r.EstadoSancion)}>
                           {r.EstadoSancion}
                         </span>
                       </td>
                       <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
-                        {r.EstadoDisponibilidad === 'Baja' ? (
-                            <span className="badge-estado pendiente">SÍ</span>
-                        ) : (
-                            <span className="badge-estado condonado">NO</span>
-                        )}
-                      </td>
+                    {/* 🏛️ ELÁSTICO: Comparamos contra la raíz lógica "Baja" para que sea inmune a etiquetas personalizadas */}
+                    {r.EstadoDisponibilidad_Logico === 'Baja' || r.EstadoDisponibilidad === 'Baja' ? (
+                        <span className="badge-estado pendiente">SÍ</span>
+                    ) : (
+                        <span className="badge-estado condonado">NO</span>
+                    )}
+                  </td>
                       <td style={{ textAlign: 'center', verticalAlign: 'middle', minWidth: '120px' }}>
                         <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'nowrap', gap: '8px' }}>
                             <IonButton className="btn-action btn-edit" fill="clear" onClick={() => openForm(r)} title="Editar" disabled={isProcessing}><IonIcon icon={createOutline} /></IonButton>

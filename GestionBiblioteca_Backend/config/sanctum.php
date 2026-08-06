@@ -50,7 +50,7 @@ return [
     |
     */
 
-    'expiration' => null,
+    'expiration' => 1440, // Expira automáticamente en 24 horas (en minutos)
 
     /*
     |--------------------------------------------------------------------------

@@ -10,6 +10,28 @@
   position: relative;
 }
 
+/* 🏛️ Nueva clase para la flecha absoluta de regreso */
+.profile-back-btn {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  background: transparent !important;
+  border: none !important;
+  color: #ffffff !important;
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: transform 0.2s ease;
+  z-index: 10;
+}
+
+.profile-back-btn:hover {
+  transform: scale(1.1);
+}
+
 .avatar-overlap-container {
   display: flex;
   flex-direction: column;
@@ -170,7 +192,7 @@
 }
 
 /* ==========================================================================
-   3. BOTONERA PREMIUM AL FONDO DE LA PÁGINA
+   3. BOTONERA AL FONDO DE LA PÁGINA (NOMBRES NORMALIZADOS)
    ========================================================================== */
 .profile-footer-actions {
   margin-top: 35px;

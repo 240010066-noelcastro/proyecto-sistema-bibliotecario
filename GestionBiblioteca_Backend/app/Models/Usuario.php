@@ -5,6 +5,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable; 
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use App\Enums\Rol;
 
 class Usuario extends Authenticatable { 
     use HasApiTokens, HasFactory, Notifiable;
@@ -14,14 +15,18 @@ class Usuario extends Authenticatable {
     
     protected $fillable = [
         'Rol_ID', 'NombreUsuario', 'ApellidoPaterno', 'ApellidoMaterno', 
-        'CorreoElectronico', 'password', 'Matricula', 'Telefono', 
-        'Direccion', 'Grupo_ID', 'FotoPerfil', 'EstadoCuenta' // 💡 Agregamos FotoPerfil aquí[cite: 1]
+        'CorreoElectronico', 'Matricula', 'Telefono', 
+        'Direccion', 'Grupo_ID', 'FotoPerfil', 'EstadoCuenta'
     ]; 
 
     protected $hidden = [
-        'password', 
+        'remember_token',
     ];
 
+    protected $casts = [
+        'Rol_ID' => Rol::class,
+    ];
+    
     // 🔗 PUENTE: Conecta este usuario con su Grupo correspondiente[cite: 1]
     public function grupo()
     {

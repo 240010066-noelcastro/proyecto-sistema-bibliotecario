@@ -1,0 +1,289 @@
+/* ==========================================================================
+   🏛️ ESTILOS MÓDULO: MI BIBLIOTECA (RESERVADO PORTAL ALUMNO)
+   ========================================================================== */
+
+   .biblioteca-navbar {
+  background-color: #582c83; 
+  height: 70px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 0 24px;
+  position: sticky;
+  top: 0;
+  z-index: 999;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.biblioteca-layout-wrapper {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 40px 20px;
+  width: 100%;
+}
+
+.biblioteca-header-section {
+  margin-bottom: 35px;
+  border-bottom: 2px solid #cbd5e1;
+  padding-bottom: 20px;
+}
+
+.biblioteca-main-title {
+  font-size: 28px;
+  font-weight: 800;
+  color: #111827;
+  margin: 0 0 8px 0;
+}
+
+.biblioteca-sub-title {
+  font-size: 15px;
+  color: #4b5563;
+  margin: 0;
+}
+
+/* CARGADORES Y ESTADOS VACÍOS */
+.biblioteca-loader-box {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 80px 0;
+  gap: 15px;
+}
+
+.biblioteca-empty-state {
+  background: #ffffff;
+  border: 2px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 60px 24px;
+  text-align: center;
+  max-width: 550px;
+  margin: 40px auto 0 auto;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+}
+
+.empty-heart-icon-box {
+  width: 70px;
+  height: 70px;
+  background-color: #fef2f2;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px auto;
+}
+
+.empty-heart-icon {
+  font-size: 34px;
+  color: #ef4444;
+}
+
+.biblioteca-empty-state h3 {
+  margin: 0 0 10px 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.biblioteca-empty-state p {
+  margin: 0 0 25px 0;
+  font-size: 14px;
+  color: #6b7280;
+  line-height: 1.6;
+}
+
+.btn-biblioteca-explorar {
+  background-color: #582c83;
+  color: #ffffff;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-biblioteca-explorar:hover {
+  background-color: #432164;
+}
+
+/* CONTENEDOR GRID DE TARJETAS DE LIBROS */
+.biblioteca-grid-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 30px;
+  width: 100%;
+}
+
+.biblioteca-book-card {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.biblioteca-book-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.06);
+  border-color: #94a3b8;
+}
+
+/* MARCO INTERNO DE LAS PORTADAS */
+.book-card-image-box {
+  width: 100%;
+  height: 290px;
+  position: relative;
+  background-color: #f1f5f9;
+  border-bottom: 1px solid #cbd5e1;
+  overflow: hidden;
+}
+
+.book-card-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.book-card-fallback {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #582c83 0%, #29143d 100%);
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  font-size: 40px;
+}
+
+.book-card-fallback span {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.book-card-heart-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: #ef4444;
+  color: #ffffff;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+
+.book-card-info-box {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.book-card-tag {
+  font-size: 11px;
+  font-weight: 700;
+  color: #582c83;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.book-card-title-text {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 6px 0;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  height: 42px;
+}
+
+.book-card-author-text {
+  font-size: 13px;
+  color: #b91c1c;
+  font-weight: 600;
+  margin: 0 0 16px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.book-card-footer {
+  margin-top: auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid #f1f5f9;
+  padding-top: 12px;
+}
+
+.book-card-type-text {
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.book-card-link-action {
+  font-size: 12px;
+  font-weight: 700;
+  color: #582c83;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.biblioteca-book-card:hover .book-card-link-action {
+  color: #432164;
+}
+
+/* ==========================================================================
+   🏛️ ESTILOS DEL AVATAR DE PERFIL (NAVBAR DERECHO UNIFICADO)
+   ========================================================================== */
+.navbar-profile-avatar-box {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.navbar-profile-avatar-box:hover {
+  transform: scale(1.05);
+  border-color: #ffffff;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+}
+
+.navbar-avatar-image-render {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.navbar-avatar-placeholder {
+  color: #ffffff;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

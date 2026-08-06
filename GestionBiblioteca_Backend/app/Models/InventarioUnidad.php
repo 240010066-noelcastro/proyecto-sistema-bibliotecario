@@ -11,5 +11,11 @@ class InventarioUnidad extends Model
     public $incrementing = false;
     protected $keyType = 'string';
     
-    protected $fillable = ['Unidad_ID', 'Recurso_ID', 'EstadoFisicoInicial', 'EstadoDisponibilidad']; 
+    protected $fillable = [
+        'Unidad_ID', 
+        'Recurso_ID', 
+        'EstadoFisicoInicial', 
+        'EstadoDisponibilidad',
+        'EstadoDisponibilidad_Logico'
+    ];
 }

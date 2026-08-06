@@ -7,17 +7,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use App\Models\RecursoCatalogo;
 use App\Models\MobiliarioDidactico;
+use App\Http\Requests\StoreMobiliarioRequest;
+use App\Http\Requests\UpdateMobiliarioRequest;
 
 class MobiliarioDidacticoController extends Controller
 {
-    public function store(Request $request)
+    public function store(StoreMobiliarioRequest $request)
     {
-        $request->validate([
-            'Titulo' => 'required|string|max:150|unique:recursos_catalogo,Titulo',
-        ], [
-            'Titulo.unique' => 'Este título ya se encuentra registrado.'
-        ]);
-
         DB::beginTransaction();
         try {
             $path = $request->hasFile('imagen') ? $request->file('imagen')->store('portadas', 'public') : $request->input('Imagen_path');
@@ -47,14 +43,8 @@ class MobiliarioDidacticoController extends Controller
         }
     }
 
-    public function update(Request $request, $id)
+    public function update(UpdateMobiliarioRequest $request, $id)
     {
-        $request->validate([
-            'Titulo' => 'required|string|max:150|unique:recursos_catalogo,Titulo,' . $id . ',Recurso_ID',
-        ], [
-            'Titulo.unique' => 'Este título ya se encuentra registrado.'
-        ]);
-
         DB::beginTransaction();
         try {
             $catalogo = RecursoCatalogo::findOrFail($id);

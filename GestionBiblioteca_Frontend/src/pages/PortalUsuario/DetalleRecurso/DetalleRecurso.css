@@ -7,7 +7,7 @@
 }
 
 /* NAVBAR MORADO OFICIAL */
-.premium-navbar {
+.detalle-navbar {
   background-color: #582c83; 
   height: 70px;
   display: grid;
@@ -73,14 +73,54 @@
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
+  transition: color 0.2s ease, text-shadow 0.2s ease;
 }
 
 .nav-top-link:hover {
-  color: #ffffff;
+  color: #ffffff; 
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+}
+
+.nav-top-link.active {
+  color: #ffffff; 
+  font-weight: 700;
+  border-bottom: 3px solid #ffffff; 
+  padding-bottom: 4px;
 }
 
 .navbar-right {
+  display: flex;
   justify-self: end;
+}
+
+.navbar-avatar-btn {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  border: 2px solid #ffffff; 
+  transition: transform 0.2s ease;
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.navbar-avatar-btn:hover {
+  transform: scale(1.05);
+}
+
+.navbar-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.navbar-avatar-letter {
+  color: #ffffff;
+  font-weight: bold;
+  font-size: 17px;
 }
 
 /* ENCUADRE GLOBAL DE LA FICHA */
@@ -197,7 +237,7 @@
   background-color: #f1f5f9;
 }
 
-/* 🏛️ LA GRAN TARJETA MAESTRA UNIFICADA */
+/* LA GRAN TARJETA MAESTRA UNIFICADA */
 .cervantes-section-group-card {
   background-color: #ffffff;
   border: 1px solid #cbd5e1; 
@@ -205,17 +245,55 @@
   overflow: hidden;
 }
 
+/* 🏛️ FLEX EJE CRUZADO: Separa el texto a la izquierda y avienta el corazón al círculo de edited-image.png */
 .group-card-title {
   margin: 0;
   background-color: #f8fafc;
   padding: 14px 20px;
   font-size: 14.5px;
   font-weight: 700;
-  color: #582c83; /* Morado UPVE */
+  color: #582c83; 
   border-bottom: 1px solid #cbd5e1;
   display: flex;
   align-items: center;
+  justify-content: space-between; 
+}
+
+.group-card-title-left-side {
+  display: flex;
+  align-items: center;
   gap: 8px;
+}
+
+/* 🏛️ ESTILO FAVORITOS: Botón interactivo ubicado en el círculo de edited-image.png */
+.btn-favorito-heart-ficha {
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  font-size: 24px;
+  color: #94a3b8; /* Gris apagado base */
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease, color 0.2s ease;
+  padding: 0;
+}
+
+.btn-favorito-heart-ficha:hover {
+  transform: scale(1.15);
+  color: #64748b;
+}
+
+.heart-active-red {
+  color: #ef4444 !important;
+  animation: heartPulseFicha 0.3s ease-in-out;
+}
+
+@keyframes heartPulseFicha {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.3); }
+  100% { transform: scale(1); }
 }
 
 .group-card-content {
@@ -263,7 +341,6 @@
   gap: 8px;
 }
 
-/* Separador sutil punteado para las observaciones */
 .border-top-dashed {
   border-top: 1px dashed #cbd5e1;
 }
@@ -290,16 +367,9 @@
   text-align: justify;
 }
 
-.text-main-synopsis {
-  color: #1f2937;
-}
+.text-main-synopsis { color: #1f2937; }
+.text-main-observations { color: #475569; font-style: italic; }
 
-.text-main-observations {
-  color: #475569;
-  font-style: italic;
-}
-
-/* BADGE COMPLEMENTARIO INFERIOR */
 .cervantes-footer-info-badge {
   background-color: rgba(88, 44, 131, 0.03);
   border: 1px dashed #582c83;
@@ -347,9 +417,7 @@
   background-color: #582c83; color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer;
 }
 
-/* ==========================================================================
-   📊 INSIGNIAS DE DISPONIBILIDAD DE INVENTARIO EN TIEMPO REAL (UPVE)
-   ========================================================================== */
+/* INSIGNIAS DISPONIBILIDAD */
 .real-inventory-badge {
   display: flex;
   align-items: center;
@@ -363,42 +431,12 @@
   text-align: center;
   line-height: 1.2;
 }
-
-.badge-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-/* Estado 1: Físico + Digital */
-.badge-both {
-  background-color: #f0fdf4;
-  color: #15803d;
-  border-color: #bbf7d0;
-}
+.badge-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.badge-both { background-color: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
 .dot-green { background-color: #22c55e; box-shadow: 0 0 6px #22c55e; }
-
-/* Estado 2: Solo Digital (Inventario Agotado) */
-.badge-digital-only {
-  background-color: #eff6ff;
-  color: #1d4ed8;
-  border-color: #bfdbfe;
-}
+.badge-digital-only { background-color: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
 .dot-blue { background-color: #3b82f6; box-shadow: 0 0 6px #3b82f6; }
-
-/* Estado 3: Solo Físico */
-.badge-physical-only {
-  background-color: #fdf4ff;
-  color: #701a75;
-  border-color: #f5d0fe;
-}
+.badge-physical-only { background-color: #fdf4ff; color: #701a75; border-color: #f5d0fe; }
 .dot-purple { background-color: #a855f7; box-shadow: 0 0 6px #a855f7; }
-
-/* Estado 4: Totalmente Agotado */
-.badge-empty {
-  background-color: #fef2f2;
-  color: #b91c1c;
-  border-color: #fecaca;
-}
+.badge-empty { background-color: #fef2f2; color: #b91c1c; border-color: #fecaca; }
 .dot-red { background-color: #ef4444; box-shadow: 0 0 6px #ef4444; }

@@ -126,8 +126,11 @@ class RecursoCatalogoController extends Controller
                 });
             }
 
-            // Ejecutamos la consulta
-            $datos = $request->has('all') ? $query->get() : $query->paginate(6);
+            // 🏛️ SOLUCIÓN MAESTRA: Captura el parámetro enviado por React, si no existe deja 6 por defecto (Panel Admin)
+            $perPage = $request->input('per_page', 6);
+
+            // Ejecutamos la consulta usando la paginación dinámica
+            $datos = $request->has('all') ? $query->get() : $query->paginate($perPage);
             $items = $request->has('all') ? $datos : $datos->getCollection();
 
             // CORRECCIÓN 2: MAGIA DE IMÁGENES (Convertimos textos en URLs y Base64 para el PDF)
@@ -255,7 +258,7 @@ class RecursoCatalogoController extends Controller
     // ====================================================================
     // 3. OBTENER DETALLE ESPECÍFICO OPTIMIZADO (CON COBERTURA DE INVENTARIO REAL)
     // ====================================================================
-    public function getRecursoDetalle($id)
+    public function getRecursoDetalle(Request $request, $id)
     {
         try {
             $recurso = DB::table('recursos_catalogo')->where('Recurso_ID', $id)->first();
@@ -301,6 +304,21 @@ class RecursoCatalogoController extends Controller
                 $selectFields[] = 'enciclopedias.EdicionVolumen';
                 $selectFields[] = 'enciclopedias.ClasificacionISBN';
             }
+            elseif ($recurso->TipoRecurso === 'Equipo Audiovisual') {
+                $query->leftJoin('audiovisuales', 'recursos_catalogo.Recurso_ID', '=', 'audiovisuales.Recurso_ID');
+                $selectFields[] = 'audiovisuales.Marca';
+                $selectFields[] = 'audiovisuales.NumSerie';
+            } 
+            elseif ($recurso->TipoRecurso === 'Mobiliario Didáctico') {
+                $query->leftJoin('mobiliario_didactico', 'recursos_catalogo.Recurso_ID', '=', 'mobiliario_didactico.Recurso_ID');
+                $selectFields[] = 'mobiliario_didactico.Marca';
+                $selectFields[] = 'mobiliario_didactico.Material';
+            } 
+            elseif ($recurso->TipoRecurso === 'Dispositivo de Conectividad') {
+                $query->leftJoin('dispositivos_conectividad', 'recursos_catalogo.Recurso_ID', '=', 'dispositivos_conectividad.Recurso_ID');
+                $selectFields[] = 'dispositivos_conectividad.Marca';
+                $selectFields[] = 'dispositivos_conectividad.NumSerie';
+            }
 
             $item = $query->select($selectFields)->first();
 
@@ -308,16 +326,12 @@ class RecursoCatalogoController extends Controller
                 return response()->json(['success' => false, 'message' => 'No se pudo estructurar la ficha técnica.'], 404);
             }
 
-            // 📊 CONTEO SEGURO DE INVENTARIO: Cuenta cuántos ejemplares físicos reales están disponibles
+            // 📊 CONTEO SEGURO DE INVENTARIO: Guiado por la columna de herencia lógica unificada
             $unidadesDisponibles = 0;
             try {
                 $unidadesDisponibles = DB::table('inventario_unidades')
                     ->where('Recurso_ID', $id)
-                    ->where(function($q) {
-                        $q->where('Estado', 'Disponible')
-                          ->orWhere('Estado', 'disponible')
-                          ->orWhere('Estado', 'Excelente');
-                    })
+                    ->where('EstadoDisponibilidad_Logico', 'Disponible')
                     ->count();
             } catch (\Throwable $thInv) {
                 // Fallback de contingencia por si la tabla está vacía o no tiene registros aún
@@ -341,10 +355,63 @@ class RecursoCatalogoController extends Controller
                 $item->Pdf_url = null;
             }
 
+            // 🏛️ NUEVO FRAGMENTO AÑADIDO AQUÍ:
+            $usuarioId = $request->user()->Usuario_ID;
+            $item->is_favorito = DB::table('favoritos')
+                ->where('Usuario_ID', $usuarioId)
+                ->where('Recurso_ID', $id)
+                ->exists();
+
+            // Tu línea original queda exactamente debajo:
             return response()->json(['success' => true, 'data' => $item], 200);
 
         } catch (\Throwable $e) {
             // Usamos Throwable para atrapar errores de cualquier tipo y mandarlos limpios a la consola
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    // ====================================================================
+    // 4. OBTENER ESTANTE DE FAVORITOS PERSONAL DEL ALUMNO (MI BIBLIOTECA)
+    // ====================================================================
+    public function getMisFavoritos(Request $request)
+    {
+        try {
+            $usuarioId = $request->user()->Usuario_ID;
+
+            // Consultamos los recursos que están en la tabla favoritos vinculados a este alumno
+            $favoritos = DB::table('favoritos')
+                ->join('recursos_catalogo', 'favoritos.Recurso_ID', '=', 'recursos_catalogo.Recurso_ID')
+                ->leftJoin('autores', 'recursos_catalogo.Autor_ID', '=', 'autores.Autor_ID')
+                ->leftJoin('temas_catalogo', 'recursos_catalogo.Tema_ID', '=', 'temas_catalogo.Tema_ID')
+                ->select(
+                    'recursos_catalogo.Recurso_ID as id',
+                    'recursos_catalogo.Titulo',
+                    'recursos_catalogo.TipoRecurso',
+                    'recursos_catalogo.Imagen_path',
+                    'temas_catalogo.NombreTema as TemaRecurso',
+                    DB::raw("TRIM(CONCAT(IFNULL(autores.NombreAutor,''), ' ', IFNULL(autores.ApellidosAutor,''))) as Autor")
+                )
+                ->where('favoritos.Usuario_ID', $usuarioId)
+                ->orderBy('favoritos.created_at', 'DESC') // Los más recientes primero
+                ->get();
+
+            // Escalado HD de portadas para mantener coherencia estética
+            foreach ($favoritos as $item) {
+                if (!empty($item->Imagen_path)) {
+                    $imgHD = str_replace('zoom=1', 'zoom=2', $item->Imagen_path);
+                    $item->Imagen_url = str_starts_with($item->Imagen_path, 'http') ? $imgHD : url('storage/' . $item->Imagen_path);
+                } else {
+                    $item->Imagen_url = null;
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $favoritos
+            ]);
+
+        } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }

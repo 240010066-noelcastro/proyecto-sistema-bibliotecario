@@ -13,6 +13,7 @@ class Sancion extends Model
     // Corregido según tu BD
     protected $fillable = [
         'Usuario_ID', 'DetallesPrestamo_ID', 'TipoSancion', 
-        'MontoPago', 'EstadoSancion', 'FechaGeneracion', 'FechaPago', 'Observaciones'
-    ]; 
+        'MontoPago', 'EstadoSancion', 'FechaGeneracion', 'FechaPago', 'Observaciones',
+        'EstadoSancion_Logico'
+    ];
 }

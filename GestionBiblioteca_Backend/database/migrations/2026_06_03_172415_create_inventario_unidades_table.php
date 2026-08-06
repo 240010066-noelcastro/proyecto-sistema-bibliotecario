@@ -22,7 +22,7 @@ return new class extends Migration
             // Estados físicos
             $table->string('EstadoFisicoInicial', 30);
             $table->string('EstadoDisponibilidad', 30);
-            
+            $table->string('EstadoDisponibilidad_Logico', 30)->nullable();
             $table->timestamps();
         });
     }

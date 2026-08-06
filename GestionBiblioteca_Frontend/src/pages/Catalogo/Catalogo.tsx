@@ -103,6 +103,7 @@ const Catalogo: React.FC = () => {
 
   const [autoresDB, setAutoresDB] = useState<string[]>([]);
   const [editorialesDB, setEditorialesDB] = useState<{nombre: string, isbn: string}[]>([]);
+  const [tiposAutorLista, setTiposAutorLista] = useState<any[]>([]);
   
   const [showSugerenciasAutor, setShowSugerenciasAutor] = useState(false);
   const [showSugerenciasEditorial, setShowSugerenciasEditorial] = useState(false);
@@ -146,7 +147,18 @@ const Catalogo: React.FC = () => {
     if (!nuevaEditorial.nombre) return showToast("El nombre de la editorial es obligatorio (*).", "danger");
     setIsProcessing(true);
     try {
-      await api.post('/editoriales', { NombreEditorial: nuevaEditorial.nombre, RazonSocial: nuevaEditorial.razonSocial, PrefijoISBN: nuevaEditorial.prefijo, EmailContacto: nuevaEditorial.email, PaisOrigen: nuevaEditorial.pais, OtrosDatosContacto: nuevaEditorial.otrosDatos, DireccionFisica: nuevaEditorial.direccion, Observaciones: nuevaEditorial.observaciones });
+      // 🏛️ CORRECCIÓN: Traducimos las propiedades de React a los parámetros exactos que espera validar Laravel
+      await api.post('/editoriales', { 
+        NombreEditorial: nuevaEditorial.nombre, 
+        RazonSocial: nuevaEditorial.razonSocial, 
+        ISBN_Editorial: nuevaEditorial.prefijo, 
+        Email: nuevaEditorial.email, 
+        PaisEditorial: nuevaEditorial.pais, 
+        DatosContacto: nuevaEditorial.otrosDatos, 
+        DireccionEditorial: nuevaEditorial.direccion, 
+        Observaciones: nuevaEditorial.observaciones 
+      });
+
       setEditorialesDB(prev => [...prev, { nombre: nuevaEditorial.nombre, isbn: nuevaEditorial.prefijo || '' }]);
       setFormData((prev: any) => ({ ...prev, Editorial: nuevaEditorial.nombre }));
       setShowModalEditorial(false);
@@ -156,7 +168,6 @@ const Catalogo: React.FC = () => {
       showToast("Error al guardar la editorial.", "danger");
     } finally { setIsProcessing(false); }
   };
-  // <--- FIN NUEVO
 
   // 🏛️ NUEVO: Procesa el alta rápida de un área o tema desde su respectiva ventana modal
   const saveTemaRapido = async () => {
@@ -253,24 +264,39 @@ const Catalogo: React.FC = () => {
 
   // LAZY LOAD DE AUTORES, EDITORIALES Y TEMAS AUTORIZADOS
   useEffect(() => {
-    if (showForm && (autoresDB.length === 0 || editorialesDB.length === 0 || temasValidosDB.length === 0)) {
-      const fetchSelects = async () => {
-        try {
-          const [resAutores, resEditoriales, resTemas]: any = await Promise.all([
-            api.get('/autores?all=true'), 
-            api.get('/editoriales?all=true'),
-            api.get('/temas/buscar?all=true') // 🏛️ NUEVO: Jalar nombres autorizados desde el inicio
-          ]);
-          setAutoresDB((resAutores.data?.data || []).map((a: any) => ((a.NombreAutor || '') + ' ' + (a.ApellidosAutor || '')).trim()));
-          setEditorialesDB((resEditoriales.data?.data || []).map((e: any) => ({ nombre: e.NombreEditorial, isbn: e.ISBN_Editorial || '' })));
-          
-          // Guardamos la lista de textos válidos para el validador
-          setTemasValidosDB(Array.isArray(resTemas.data?.data) ? resTemas.data.data : []);
-        } catch (err) { console.error(err); }
-      };
-      fetchSelects();
-    }
-  }, [showForm, autoresDB.length, editorialesDB.length, temasValidosDB.length]);
+      if (showForm && (autoresDB.length === 0 || editorialesDB.length === 0 || temasValidosDB.length === 0)) {
+        const fetchSelects = async () => {
+          try {
+            // 🏛️ ELÁSTICO: Jalamos de forma paralela la tuerca de Autores para alimentar el alta rápida
+            const [resAutores, resEditoriales, resTemas, resConfigAutores]: any = await Promise.all([
+              api.get('/autores?all=true'), 
+              api.get('/editoriales?all=true'),
+              api.get('/temas/buscar?all=true'),
+              api.get('/configuraciones/Autores').catch(() => ({ data: {} }))
+            ]);
+            setAutoresDB((resAutores.data?.data || []).map((a: any) => ((a.NombreAutor || '') + ' ' + (a.ApellidosAutor || '')).trim()));
+            setEditorialesDB((resEditoriales.data?.data || []).map((e: any) => ({ nombre: e.NombreEditorial, isbn: e.ISBN_Editorial || '' })));
+            setTemasValidosDB(Array.isArray(resTemas.data?.data) ? resTemas.data.data : []);
+
+            // Parseo y normalización anti-errores de tipos de autor
+            const content = resConfigAutores.data?.data;
+            const raw = content ? (Array.isArray(content) ? content.find((row: any) => row.Clave === 'tipos_autor')?.Valor : content.tipos_autor) : null;
+            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            const normalized = Array.isArray(parsed) ? parsed : [{ label: 'Personal', isNative: true }, { label: 'Corporativo / Institucional', isNative: true }];
+            const filtrados = normalized.filter((item: any) => typeof item === 'string' ? true : !item.hidden);
+
+            setTiposAutorLista(filtrados);
+
+            // Sincroniza dinámicamente el valor inicial del modal para evitar campos vacíos
+            if (filtrados.length > 0) {
+              const primerValor = typeof filtrados[0] === 'string' ? filtrados[0] : (filtrados[0].label || 'Personal');
+              setNuevoAutor(prev => ({ ...prev, tipo: primerValor }));
+            }
+          } catch (err) { console.error(err); }
+        };
+        fetchSelects();
+      }
+    }, [showForm, autoresDB.length, editorialesDB.length, temasValidosDB.length]);
 
   // 🏛️ NUEVO: Escucha el cambio del tema para generar predicciones sin errores de dedo
   useEffect(() => {
@@ -377,6 +403,20 @@ const Catalogo: React.FC = () => {
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files ? e.target.files[0] : null;
     if (file) {
+      // Candado de seguridad: Formato y Máximo 2 MB
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
+      const maxSize = 2 * 1024 * 1024; // 2 MB en bytes
+
+      if (!allowedTypes.includes(file.type)) {
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return showToast("Formato no válido. Solo se permiten imágenes JPG, PNG o WEBP.", "danger");
+      }
+
+      if (file.size > maxSize) {
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return showToast("La imagen es demasiado pesada (Máximo 2 MB).", "danger");
+      }
+
       setImageFile(file);
       setPreviewImage(URL.createObjectURL(file));
       setFormData({...formData, Imagen_path: file.name});
@@ -926,7 +966,32 @@ const Catalogo: React.FC = () => {
           <div className="form-row" style={{ width: '100%', marginTop: '15px' }}>
             <div className="form-group flex-1">
               <label>DOCUMENTO DIGITAL (PDF DE LA TESIS)</label>
-              <input className="custom-input" type="file" accept=".pdf" onChange={(e) => setDocumentoFile(e.target.files ? e.target.files[0] : null)} style={{ padding: '10px 15px' }} />
+              <input 
+              className="custom-input" 
+              type="file" 
+              accept=".pdf" 
+              onChange={(e) => {
+                const file = e.target.files ? e.target.files[0] : null;
+                if (file) {
+                  const maxSize = 20 * 1024 * 1024;
+                  
+                  if (file.type !== 'application/pdf') {
+                    e.target.value = '';
+                    setDocumentoFile(null);
+                    return showToast("Solo se admiten documentos en formato PDF.", "danger");
+                  }
+                  
+                  if (file.size > maxSize) {
+                  e.target.value = '';
+                  setDocumentoFile(null);
+                  return showToast("El PDF excede el peso máximo permitido (Máximo 20 MB).", "danger");
+                }
+                  
+                  setDocumentoFile(file);
+                }
+              }} 
+              style={{ padding: '10px 15px' }} 
+            />
             </div>
             <div className="form-group flex-2">
               <label>AUTORIZACIÓN INSTITUCIONAL (EDITABLE)</label>
@@ -1073,8 +1138,18 @@ const Catalogo: React.FC = () => {
                 <div className="form-group flex-1">
                   <label>TIPO DE AUTOR *</label>
                   <select className="custom-input" value={nuevoAutor.tipo} onChange={e => setNuevoAutor({...nuevoAutor, tipo: e.target.value})}>
-                    <option value="Personal">Personal</option>
-                    <option value="Corporativo">Corporativo</option>
+                    <option value="" disabled>-- Seleccionar --</option>
+                    {tiposAutorLista.length > 0 ? tiposAutorLista.map((t, i) => (
+                      /* 🏛️ ELÁSTICO: Renderiza dinámicamente todas tus clasificaciones de la tuerca */
+                      <option key={i} value={typeof t === 'string' ? t : (t.label || '')}>
+                        {typeof t === 'string' ? t : (t.label || '')}
+                      </option>
+                    )) : (
+                      <>
+                        <option value="Personal">Personal</option>
+                        <option value="Corporativo / Institucional">Corporativo / Institucional</option>
+                      </>
+                    )}
                   </select>
                 </div>
                 <div className="form-group flex-1"><label>NACIONALIDAD</label><input className="custom-input" value={nuevoAutor.nacionalidad} onChange={e => setNuevoAutor({...nuevoAutor, nacionalidad: e.target.value})} /></div>
@@ -1506,7 +1581,8 @@ const Catalogo: React.FC = () => {
                       {/* -------------------------------------- */}
 
                       <th>AÑO</th>
-                      <th style={{textAlign: 'center'}}>CONSULTA</th>
+                      {/* OCULTADO SEGURO: Solo se muestra si es material impreso/digital de lectura */}
+                      {isPrintMaterial && <th style={{textAlign: 'center'}}>CONSULTA</th>}
                       <th style={{textAlign: 'center'}}>ACCIONES</th>
                     </tr>
                   </thead>
@@ -1551,25 +1627,28 @@ const Catalogo: React.FC = () => {
                         {/* ------------------------------------ */}
 
                         <td>{r.AnioPublicacion}</td>
-                        <td style={{ textAlign: 'center' }}>
-                          {r.Pdf_url && activeModule === 'Tesis' ? (
-                            <button 
-                              onClick={(e) => handleOpenLink(e, r.Pdf_url, r.Mensaje_Legal, true)} 
-                              className="btn-link-pdf" 
-                              style={{ border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                              Ver PDF
-                            </button>
-                          ) : r.URL_Externa ? (
-                            <button 
-                              onClick={(e) => handleOpenLink(e, r.URL_Externa, r.Mensaje_Legal, false)} 
-                              className="btn-link-externo" 
-                              style={{ border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                              Ir al Sitio
-                            </button>
-                          ) : (
-                            <span style={{ color: '#9ca3af', fontSize: '12px' }}>Físico</span>
-                          )}
-                        </td>
+                        {/* OCULTADO SEGURO: La celda completa desaparece si es mobiliario, conectividad o audiovisual */}
+                        {isPrintMaterial && (
+                          <td style={{ textAlign: 'center' }}>
+                            {r.Pdf_url && activeModule === 'Tesis' ? (
+                              <button 
+                                onClick={(e) => handleOpenLink(e, r.Pdf_url, r.Mensaje_Legal, true)} 
+                                className="btn-link-pdf" 
+                                style={{ border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                                Ver PDF
+                              </button>
+                            ) : r.URL_Externa ? (
+                              <button 
+                                onClick={(e) => handleOpenLink(e, r.URL_Externa, r.Mensaje_Legal, false)} 
+                                className="btn-link-externo" 
+                                style={{ border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                                Ir al Sitio
+                              </button>
+                            ) : (
+                              <span style={{ color: '#9ca3af', fontSize: '12px' }}>Físico</span>
+                            )}
+                          </td>
+                        )}
                         <td style={{ textAlign: 'center', minWidth: '120px' }}>
                           <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'nowrap', gap: '8px' }}>
                             <IonButton className="btn-action btn-edit" fill="clear" onClick={() => openForm(r)}><IonIcon icon={createOutline} /></IonButton>

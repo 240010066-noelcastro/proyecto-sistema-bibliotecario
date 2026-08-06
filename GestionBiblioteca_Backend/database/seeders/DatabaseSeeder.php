@@ -2,29 +2,51 @@
 
 namespace Database\Seeders;
 
-use App\Models\Usuario;
-use App\Models\Rol;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Crypt;
+use App\Models\Usuario;
+use App\Enums\Rol;
 
 class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        // 1. Creamos los roles (CORREGIDO con ::)
-        $adminRol = Rol::create(['NombreRol' => 'Administrador']); // ID: 1
-        $userRol = Rol::create(['NombreRol' => 'Usuario']);       // ID: 2
+        // 1. Garantizamos que los roles existan cifrados en la BD sin duplicar registros
+        DB::table('roles')->updateOrInsert(
+            ['Rol_ID' => Rol::ADMIN->value],
+            [
+                'NombreRol' => Crypt::encryptString('Administrador'),
+                'created_at' => now(),
+                'updated_at' => now()
+            ]
+        );
 
-        // 2. Creamos el Administrador inicial
-        Usuario::create([
-            'Rol_ID' => 1, 
-            'NombreUsuario' => 'Admin Principal',
-            'ApellidoPaterno' => 'UPVE',
-            'ApellidoMaterno' => 'Biblioteca',
-            'CorreoElectronico' => 'admin@upve.edu.mx',
-            'password' => Hash::make('admin123'), // Así se encripta
-            'Telefono' => '0000000000',
-            'EstadoCuenta' => 'Activo'
-        ]);
+        DB::table('roles')->updateOrInsert(
+            ['Rol_ID' => Rol::USUARIO->value],
+            [
+                'NombreRol' => Crypt::encryptString('Usuario'),
+                'created_at' => now(),
+                'updated_at' => now()
+            ]
+        );
+
+        // 2. Creamos el Administrador Inicial vinculado a tu cuenta de Google
+        Usuario::firstOrCreate(
+            [
+                // ⚠️ IMPORTANTE: Cambia este correo por tu correo institucional REAL de Google
+                'CorreoElectronico' => '240010066@upve.edu.mx' 
+            ],
+            [
+                'Rol_ID' => Rol::ADMIN->value,
+                'NombreUsuario' => 'Admin Principal',
+                'ApellidoPaterno' => 'UPVE',
+                'ApellidoMaterno' => 'Biblioteca',
+                'Matricula' => 'ADM-001',
+                'Telefono' => '0000000000',
+                'EstadoCuenta' => 'Activo',
+                'Grupo_ID' => null
+            ]
+        );
     }
 }

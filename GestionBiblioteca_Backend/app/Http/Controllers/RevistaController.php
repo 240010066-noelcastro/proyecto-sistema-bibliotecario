@@ -7,20 +7,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use App\Models\RecursoCatalogo;
 use App\Models\Revista;
+use App\Http\Requests\StoreRevistaRequest;
+use App\Http\Requests\UpdateRevistaRequest;
 
 class RevistaController extends Controller
 {
-    public function store(Request $request)
+    public function store(StoreRevistaRequest $request)
     {
-        $request->validate([
-            'Titulo' => 'required|string|max:150|unique:recursos_catalogo,Titulo',
-            'ClasificacionISSN' => 'nullable|string|unique:revistas,ClasificacionISSN',
-            'Cantidad_Paginas' => 'nullable|integer|min:0',
-        ], [
-            'Titulo.unique' => 'Este título ya se encuentra registrado.',
-            'ClasificacionISSN.unique' => 'Este ISSN ya se encuentra registrado.'
-        ]);
-
         DB::beginTransaction();
         try {
             $path = $request->hasFile('imagen') ? $request->file('imagen')->store('portadas', 'public') : $request->input('Imagen_path');
@@ -67,17 +60,8 @@ class RevistaController extends Controller
         }
     }
 
-    public function update(Request $request, $id)
+    public function update(UpdateRevistaRequest $request, $id)
     {
-        $request->validate([
-            'Titulo' => 'required|string|max:150|unique:recursos_catalogo,Titulo,' . $id . ',Recurso_ID',
-            'ClasificacionISSN' => 'nullable|string|unique:revistas,ClasificacionISSN,' . $id . ',Recurso_ID',
-            'Cantidad_Paginas' => 'nullable|integer|min:0',
-        ], [
-            'Titulo.unique' => 'Este título ya se encuentra registrado.',
-            'ClasificacionISSN.unique' => 'Este ISSN ya se encuentra registrado en otra revista.'
-        ]);
-
         DB::beginTransaction();
         try {
             $catalogo = RecursoCatalogo::findOrFail($id);

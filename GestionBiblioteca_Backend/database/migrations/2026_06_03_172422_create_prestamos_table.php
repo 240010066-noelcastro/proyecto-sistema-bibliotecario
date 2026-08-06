@@ -29,6 +29,7 @@ return new class extends Migration
             $table->dateTime('FechaSalida');
             $table->dateTime('FechaDevolucionEstablecida');
             $table->string('EstadoPrestamo', 30);
+            $table->string('EstadoPrestamo_Logico', 30)->nullable();
             
             $table->timestamps();
         });

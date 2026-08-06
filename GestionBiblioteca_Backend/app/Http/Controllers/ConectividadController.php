@@ -6,19 +6,13 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\RecursoCatalogo;
 use App\Models\DispositivoConectividad;
+use App\Http\Requests\StoreConectividadRequest;
+use App\Http\Requests\UpdateConectividadRequest;
 
 class ConectividadController extends Controller
 {
-    public function store(Request $request)
+    public function store(StoreConectividadRequest $request)
     {
-        $request->validate([
-        'Titulo' => 'required|string|max:150|unique:recursos_catalogo,Titulo',
-        'NumSerie' => 'nullable|string|unique:dispositivos_conectividad,NumSerie',
-    ], [
-        'Titulo.unique' => 'Este título ya se encuentra registrado.',
-        'NumSerie.unique' => 'Ya existe un dispositivo con este Número de Serie.'
-    ]);
-
         DB::beginTransaction();
         try {
             $path = $request->hasFile('imagen') ? $request->file('imagen')->store('portadas', 'public') : $request->input('Imagen_path');
@@ -48,16 +42,8 @@ class ConectividadController extends Controller
         }
     }
 
-    public function update(Request $request, $id)
+    public function update(UpdateConectividadRequest $request, $id)
     {
-        $request->validate([
-        'Titulo' => 'required|string|max:150|unique:recursos_catalogo,Titulo,' . $id . ',Recurso_ID',
-        'NumSerie' => 'nullable|string|unique:dispositivos_conectividad,NumSerie,' . $id . ',Recurso_ID',
-    ], [
-        'Titulo.unique' => 'Este título ya se encuentra registrado.',
-        'NumSerie.unique' => 'Este Número de Serie ya pertenece a otro dispositivo.'
-    ]);
-
         DB::beginTransaction();
         try {
             $catalogo = RecursoCatalogo::findOrFail($id);

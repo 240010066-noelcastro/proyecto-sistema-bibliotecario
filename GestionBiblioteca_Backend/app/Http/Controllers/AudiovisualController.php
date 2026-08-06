@@ -7,20 +7,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use App\Models\RecursoCatalogo;
 use App\Models\Audiovisual;
+use App\Http\Requests\StoreAudiovisualRequest;
+use App\Http\Requests\UpdateAudiovisualRequest;
 
 class AudiovisualController extends Controller
 {
-    public function store(Request $request)
+    public function store(StoreAudiovisualRequest $request)
     {
-        // En public function store:
-    $request->validate([
-        'Titulo' => 'required|string|max:150|unique:recursos_catalogo,Titulo',
-        'NumSerie' => 'nullable|string|unique:audiovisuales,NumSerie',
-    ], [
-        'Titulo.unique' => 'Este título ya se encuentra registrado.',
-        'NumSerie.unique' => 'Ya existe un equipo registrado con este número de serie.'
-    ]);
-
         DB::beginTransaction();
         try {
             $path = $request->hasFile('imagen') ? $request->file('imagen')->store('portadas', 'public') : $request->input('Imagen_path');
@@ -49,16 +42,8 @@ class AudiovisualController extends Controller
         }
     }
 
-    public function update(Request $request, $id)
+    public function update(UpdateAudiovisualRequest $request, $id)
     {
-        $request->validate([
-        'Titulo' => 'required|string|max:150|unique:recursos_catalogo,Titulo,' . $id . ',Recurso_ID',
-        'NumSerie' => 'nullable|string|unique:audiovisuales,NumSerie,' . $id . ',Recurso_ID',
-    ], [
-        'Titulo.unique' => 'Este título ya se encuentra registrado.',
-        'NumSerie.unique' => 'Este número de serie ya pertenece a otro equipo.'
-    ]);
-
         DB::beginTransaction();
         try {
             $catalogo = RecursoCatalogo::findOrFail($id);

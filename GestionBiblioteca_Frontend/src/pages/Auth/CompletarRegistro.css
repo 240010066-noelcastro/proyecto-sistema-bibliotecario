@@ -155,18 +155,6 @@
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
 }
 
-/* Ícono de Mostrar/Ocultar Contraseña */
-.registro-password-toggle {
-  position: absolute;
-  right: 15px;
-  color: #6b7280;
-  font-size: 22px;
-  cursor: pointer;
-  z-index: 10;
-  transition: color 0.2s;
-}
-.registro-password-toggle:hover { color: #582c83; }
-
 /* Botón Finalizar */
 .btn-registro-submit { 
   width: 100%;

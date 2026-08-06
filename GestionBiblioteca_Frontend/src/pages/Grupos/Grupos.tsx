@@ -37,8 +37,10 @@ const Grupos: React.FC = () => {
   const [totalRecords, setTotalRecords] = useState(0);
 
   const [formData, setFormData] = useState<any>({ 
-    Grupo_ID: null, NombreGrupo: '', Carrera_ID: ''
+    Grupo_ID: null, NombreGrupo: '', Carrera_ID: '', Estado: 'Activo'
   });
+
+  const [filterEstado, setFilterEstado] = useState('Todos');
 
   // APAGAR EL FOQUITO JUSTO AL SALIR DEL MÓDULO (Evita que Ionic lo guarde abierto en caché)
   useIonViewWillLeave(() => {
@@ -73,7 +75,7 @@ const Grupos: React.FC = () => {
   });
 
   // FUNCIÓN DE BÚSQUEDA Y PAGINACIÓN BLINDADA
-  const fetchPage = async (page: number, search = searchQuery) => {
+  const fetchPage = async (page: number, search = searchQuery, estado = filterEstado) => {
     setIsLoading(true); 
     if (abortControllerRef.current) abortControllerRef.current.abort();
     
@@ -81,7 +83,7 @@ const Grupos: React.FC = () => {
     abortControllerRef.current = currentAbortController;
 
     try {
-      const res = await api.get(`/grupos?page=${page}&search=${search}`, {
+      const res = await api.get(`/grupos?page=${page}&search=${search}&estado=${estado}`, {
           signal: currentAbortController.signal
       });
       setRecords(res.data?.data?.data || []);
@@ -99,6 +101,11 @@ const Grupos: React.FC = () => {
     }
   };
 
+  const handleFilterChange = (nuevoEstado: string) => {
+    setFilterEstado(nuevoEstado);
+    fetchPage(1, searchQuery, nuevoEstado);
+  };
+
   // Función para disparar la búsqueda solo al hacer clic en la lupa o dar Enter
   const handleSearch = () => {
     fetchPage(1, searchQuery);
@@ -107,10 +114,15 @@ const Grupos: React.FC = () => {
   const openForm = (record?: any) => {
     if (record) {
       setIsEditing(true);
-      setFormData({ Grupo_ID: record.Grupo_ID, NombreGrupo: record.NombreGrupo, Carrera_ID: record.Carrera_ID });
+      setFormData({ 
+        Grupo_ID: record.Grupo_ID, 
+        NombreGrupo: record.NombreGrupo, 
+        Carrera_ID: record.Carrera_ID,
+        Estado: record.Estado || 'Activo' 
+      });
     } else {
       setIsEditing(false);
-      setFormData({ Grupo_ID: null, NombreGrupo: '', Carrera_ID: '' });
+      setFormData({ Grupo_ID: null, NombreGrupo: '', Carrera_ID: '', Estado: 'Activo' });
     }
     setShowForm(true);
   };
@@ -121,7 +133,11 @@ const Grupos: React.FC = () => {
     }
     
     setIsLoading(true);
-    const payload = { NombreGrupo: formData.NombreGrupo, Carrera_ID: formData.Carrera_ID };
+    const payload = { 
+      NombreGrupo: formData.NombreGrupo, 
+      Carrera_ID: formData.Carrera_ID,
+      Estado: formData.Estado || 'Activo'
+    };
 
     try {
       if (isEditing) await api.put(`/grupos/${formData.Grupo_ID}`, payload);
@@ -160,10 +176,10 @@ const Grupos: React.FC = () => {
   const exportToExcel = async () => {
     setIsLoading(true);
     try {
-      const res = await api.get(`/grupos?all=true&search=${searchQuery}`);
+      const res = await api.get(`/grupos?all=true&search=${searchQuery}&estado=${filterEstado}`);
       const allData = res.data.data || [];
       const ws = XLSX.utils.json_to_sheet(allData.map((r: any) => ({
-        'ID': r.Grupo_ID, 'Nombre del Grupo': r.NombreGrupo, 'Carrera': r.NombreCarrera, 'Siglas': r.Siglas
+        'ID': r.Grupo_ID, 'Nombre del Grupo': r.NombreGrupo, 'Carrera': r.NombreCarrera, 'Siglas': r.Siglas, 'Estado': r.Estado || 'Activo'
       })));
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Grupos'); 
@@ -179,14 +195,14 @@ const Grupos: React.FC = () => {
   const exportToPDF = async () => {
     setIsLoading(true);
     try {
-      const res = await api.get(`/grupos?all=true&search=${searchQuery}`);
+      const res = await api.get(`/grupos?all=true&search=${searchQuery}&estado=${filterEstado}`);
       const allData = res.data.data || [];
       const doc = new jsPDF();
       doc.text(`Directorio de Grupos - UPVE`, 14, 15);
       autoTable(doc, { 
         startY: 20, 
-        head: [['ID', 'Grupo', 'Carrera', 'Siglas']], 
-        body: allData.map((r: any) => [r.Grupo_ID, r.NombreGrupo, r.NombreCarrera, r.Siglas]), 
+        head: [['ID', 'Grupo', 'Carrera', 'Siglas', 'Estado']], 
+        body: allData.map((r: any) => [r.Grupo_ID, r.NombreGrupo, r.NombreCarrera, r.Siglas, r.Estado || 'Activo']), 
         theme: 'grid', 
         headStyles: { fillColor: [88, 44, 131] } 
       });
@@ -243,8 +259,8 @@ const Grupos: React.FC = () => {
                 <tbody>
                   <tr>
                     <td><strong>Grupo Específico</strong></td>
-                    <td>Escribe el nombre o nomenclatura exacta del cuatrimestre y grupo.</td>
-                    <td><code className="code-badge">TIID1-1</code> o <code className="code-badge">AD1-2</code></td>
+                    <td>Escribe el grupo correspondiente a la carrera y año de ingreso del alumno.</td>
+                    <td><code className="code-badge">TIID 2026</code></td>
                   </tr>
                   <tr>
                     <td><strong>Carrera Completa</strong></td>
@@ -309,19 +325,43 @@ const Grupos: React.FC = () => {
                 setSearchQuery(newValue);
                 // Si el usuario borró todo con el teclado, recargamos la lista
                 if (newValue.trim() === '') {
-                  fetchPage(1, '');
+                  fetchPage(1, '', filterEstado);
                 }
               }}
               onKeyDown={(e: any) => e.key === 'Enter' && handleSearch()}
               onIonClear={() => {
                 setSearchQuery('');
-                fetchPage(1, '');
+                fetchPage(1, '', filterEstado);
               }}
               disabled={isLoading}
             />
-            <IonButton className="btn-buscar-lupa" onClick={handleSearch} disabled={isLoading}>
+
+              <IonButton className="btn-buscar-lupa" onClick={handleSearch} disabled={isLoading}>
               <IonIcon icon={searchOutline} />
             </IonButton>
+
+            {/* 👈 NUEVO: Selector desplegable para filtrar por estado */}
+            <select 
+              className="custom-input select-filtro-estado" 
+              value={filterEstado}
+              onChange={(e) => handleFilterChange(e.target.value)}
+              disabled={isLoading}
+              style={{
+                maxWidth: '160px',
+                height: '42px',
+                borderRadius: '8px',
+                border: '1px solid #d1d5db',
+                padding: '0 10px',
+                fontWeight: '500',
+                color: '#374151',
+                backgroundColor: '#fff',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="Todos">Todos</option>
+              <option value="Activo">Solo Activos</option>
+              <option value="Inactivo">Solo Inactivos</option>
+            </select>
 
             {/* BOTÓN DEL FOQUITO */}
             <button className="btn-bulb-help" onClick={() => setShowHelp(true)} title="Ver guía de búsqueda">
@@ -338,7 +378,7 @@ const Grupos: React.FC = () => {
                 
                 <div className="form-group name-col">
                   <label>NOMBRE DEL GRUPO *</label>
-                  <input className="custom-input" value={formData.NombreGrupo || ''} onChange={e => setFormData({...formData, NombreGrupo: e.target.value})} maxLength={20} placeholder="Ej. TIID 1-1"/>
+                  <input className="custom-input" value={formData.NombreGrupo || ''} onChange={e => setFormData({...formData, NombreGrupo: e.target.value})} maxLength={20} placeholder="Ej. TIID 2026"/>
                 </div>
                 
                 <div className="form-group carrera-col">
@@ -348,6 +388,14 @@ const Grupos: React.FC = () => {
                     {carrerasDB.map((carrera) => (
                       <option key={carrera.Carrera_ID} value={carrera.Carrera_ID}>{carrera.NombreCarrera} ({carrera.Siglas})</option>
                     ))}
+                  </select>
+                </div>
+
+                <div className="form-group estado-col">
+                  <label>ESTADO *</label>
+                  <select className="custom-input select-input" value={formData.Estado || 'Activo'} onChange={e => setFormData({...formData, Estado: e.target.value})}>
+                    <option value="Activo">Activo</option>
+                    <option value="Inactivo">Inactivo / Pasado</option>
                   </select>
                 </div>
                 
@@ -368,6 +416,7 @@ const Grupos: React.FC = () => {
                     <th>GRUPO</th>
                     <th>CARRERA</th>
                     <th style={{ textAlign: 'center' }}>SIGLAS</th>
+                    <th style={{ textAlign: 'center' }}>ESTADO</th>
                     <th style={{ textAlign: 'center' }}>ACCIONES</th>
                   </tr>
                 </thead>
@@ -378,6 +427,13 @@ const Grupos: React.FC = () => {
                       <td style={{ fontWeight: 'bold', color: '#111827' }}>{r.NombreGrupo}</td>
                       <td>{r.NombreCarrera}</td>
                       <td style={{ textAlign: 'center' }}><span className="badge-siglas">{r.Siglas}</span></td>
+                      
+                      <td style={{ textAlign: 'center' }}>
+                        <span className={`badge-estado ${r.Estado === 'Activo' ? 'activo' : 'inactivo'}`}>
+                          {r.Estado || 'Activo'}
+                        </span>
+                      </td>
+
                       <td style={{ textAlign: 'center', minWidth: '120px' }}>
                         <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'nowrap', gap: '8px' }}>
                           <IonButton className="btn-action btn-edit" fill="clear" onClick={() => openForm(r)} disabled={isLoading}><IonIcon icon={createOutline} /></IonButton>
@@ -387,7 +443,7 @@ const Grupos: React.FC = () => {
                     </tr>
                   ))}
                   {records.length === 0 && !isLoading && (
-                    <tr><td colSpan={5} className="empty-state">No hay grupos registrados o que coincidan con la búsqueda.</td></tr>
+                    <tr><td colSpan={6} className="empty-state">No hay grupos registrados o que coincidan con la búsqueda.</td></tr>
                   )}
                 </tbody>
               </table>

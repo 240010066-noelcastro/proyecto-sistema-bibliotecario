@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\TipoRecurso;
 use Illuminate\Http\Request;
+use App\Http\Requests\StoreTipoRecursoRequest;
+use App\Http\Requests\UpdateTipoRecursoRequest;
 
 class TipoRecursoController extends Controller
 {
@@ -12,31 +14,23 @@ class TipoRecursoController extends Controller
         return response()->json(['success' => true, 'data' => TipoRecurso::all()]);
     }
 
-    public function store(Request $request)
+    public function store(StoreTipoRecursoRequest $request)
     {
-        $request->validate([
-            'NombreTipo' => 'required|string|max:50',
-            'Descripcion' => 'nullable|string|max:250',
-        ]);
+        $validated = $request->validated();
 
         return response()->json([
             'success' => true,
             'message' => 'Tipo de recurso registrado exitosamente',
-            'data' => TipoRecurso::create($request->all())
+            'data' => TipoRecurso::create($validated)
         ], 201);
     }
 
-    public function update(Request $request, $id)
+    public function update(UpdateTipoRecursoRequest $request, $id)
     {
         $tipo = TipoRecurso::findOrFail($id);
+        $validated = $request->validated();
 
-        // El candado de validación idéntico al store
-        $request->validate([
-            'NombreTipo' => 'required|string|max:50',
-            'Descripcion' => 'nullable|string|max:250',
-        ]);
-
-        $tipo->update($request->all());
+        $tipo->update($validated);
 
         return response()->json(['success' => true, 'data' => $tipo], 200);
     }

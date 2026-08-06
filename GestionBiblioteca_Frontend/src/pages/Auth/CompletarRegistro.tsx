@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { IonContent, IonPage, IonLoading, IonIcon } from '@ionic/react';
-import { libraryOutline, cardOutline, callOutline, peopleOutline, arrowBackOutline, lockClosedOutline, eyeOutline, eyeOffOutline } from 'ionicons/icons';
+import { IonContent, IonPage, IonIcon } from '@ionic/react';
+import { libraryOutline, cardOutline, callOutline, peopleOutline, arrowBackOutline } from 'ionicons/icons';
 // @ts-ignore
 import api from '../../services/api';
 import './CompletarRegistro.css'; 
@@ -9,8 +9,6 @@ const CompletarRegistro: React.FC = () => {
   const [matricula, setMatricula] = useState('');
   const [telefono, setTelefono] = useState('');
   const [grupoId, setGrupoId] = useState(''); 
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -30,7 +28,7 @@ const CompletarRegistro: React.FC = () => {
 
   const cargarGrupos = async () => {
     try {
-      const response = await api.get('/grupos?all=true');
+      const response = await api.get('/grupos-publicos?all=true');
       const lista = Array.isArray(response.data?.data) ? response.data.data : [];
       setGrupos(lista);
     } catch (error) {
@@ -51,23 +49,22 @@ const CompletarRegistro: React.FC = () => {
     e.preventDefault();
     setErrorMsg('');
 
-    if (!matricula || !telefono || !grupoId || !password) {
-      return setErrorMsg('Por favor, completa todos los campos.');
+    if (!matricula || !telefono) {
+    return setErrorMsg('Por favor, ingresa tu matrícula/núm. empleado y teléfono.');
     }
 
     if (telefono.length !== 10) {
-      return setErrorMsg('El número de teléfono debe tener exactamente 10 dígitos.');
+    return setErrorMsg('El número de teléfono debe tener exactamente 10 dígitos.');
     }
 
     setLoading(true);
     try {
-      const payload = {
-        ...datosGoogle,
-        matricula,
-        telefono,
-        grupo_id: grupoId,
-        password 
-      };
+    const payload = {
+    ...datosGoogle,
+    matricula,
+    telefono,
+    grupo_id: grupoId ? grupoId : null
+    };
 
       const response = await api.post('/completar-registro', payload);
 
@@ -139,14 +136,14 @@ const CompletarRegistro: React.FC = () => {
               </div>
 
               <h2 className="registro-title">Completa tu perfil</h2>
-              <p className="registro-subtitle">Hola, {datosGoogle.nombre}. Ingresa tus datos escolares.</p>
+              <p className="registro-subtitle">Hola, {datosGoogle.nombre}. Introduce tus datos.</p>
 
               {errorMsg && <div className="registro-alert">{errorMsg}</div>}
 
               <form onSubmit={handleRegistro}>
                 
                 <div className="registro-input-group">
-                  <label>Matrícula</label>
+                  <label>Matrícula / Núm. de empleado</label>
                   <div className="registro-input-wrapper">
                     <IonIcon icon={cardOutline} className="registro-field-icon" />
                     <input 
@@ -174,42 +171,21 @@ const CompletarRegistro: React.FC = () => {
                 </div>
 
                 <div className="registro-input-group">
-                  <label>Grupo</label>
+                  <label>Grupo / Carrera</label>
                   <div className="registro-input-wrapper">
                     <IonIcon icon={peopleOutline} className="registro-field-icon" />
                     <select 
                       value={grupoId}
                       onChange={(e) => setGrupoId(e.target.value)}
-                      required
                       disabled={loading}
                     >
-                      <option value="" disabled>Selecciona tu grupo...</option>
+                      <option value="">Ninguno (Docente / Personal / Sin grupo)</option>
                       {grupos.map((grupo: any) => (
                         <option key={grupo.Grupo_ID || grupo.id} value={grupo.Grupo_ID || grupo.id}>
                           {grupo.NombreGrupo || grupo.Nombre || grupo.nombre || `Grupo ${grupo.Grupo_ID || grupo.id}`}
                         </option>
                       ))}
                     </select>
-                  </div>
-                </div>
-
-                <div className="registro-input-group">
-                  <label>Contraseña</label>
-                  <div className="registro-input-wrapper">
-                    <IonIcon icon={lockClosedOutline} className="registro-field-icon" />
-                    <input 
-                      type={showPassword ? 'text' : 'password'} 
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Crea tu contraseña"
-                      style={{ paddingRight: '45px' }}
-                      disabled={loading}
-                    />
-                    <IonIcon 
-                      icon={showPassword ? eyeOutline : eyeOffOutline} 
-                      className="registro-password-toggle" 
-                      onClick={() => setShowPassword(!showPassword)}
-                    />
                   </div>
                 </div>
 

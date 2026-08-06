@@ -19,22 +19,12 @@ class PerfilController extends Controller
                 return response()->json(['success' => false, 'message' => 'Sesión no válida.'], 401);
             }
 
-            // 👇 CORRECCIÓN AQUÍ: Cambiamos 'grupos,id' por 'grupos,Grupo_ID'
             $request->validate([
-                'telefono' => 'required|string|max:15',
-                'grupo_id' => 'required|exists:grupos,Grupo_ID', 
-                'foto'     => 'nullable|string' 
+                'telefono' => 'required|string|max:15'
             ]);
 
-            // Asignamos los cambios directo al modelo de la sesión
+            // Asignamos solo el cambio de teléfono
             $usuario->Telefono = $request->telefono;
-            $usuario->Grupo_ID = $request->grupo_id;
-            
-            // Si viene una foto en Base64, la guardamos
-            if ($request->has('foto') && !empty($request->foto)) {
-                $usuario->FotoPerfil = $request->foto;
-            }
-
             $usuario->save();
 
             // Recargamos el modelo con sus relaciones actualizadas

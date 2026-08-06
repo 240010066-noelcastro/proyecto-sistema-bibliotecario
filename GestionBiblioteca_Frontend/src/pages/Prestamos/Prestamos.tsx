@@ -15,7 +15,7 @@ const Prestamos: React.FC = () => {
   // NUEVO ESTADO: Filtro tipo Dashboard
   const [rangoFecha, setRangoFecha] = useState('todo');
 
-  const [showHelp, setShowHelp] = useState(false); // <-- NUEVO ESTADO DEL TOOLTIP
+  const [showHelp, setShowHelp] = useState(false);
   
   // ESTADOS DE CARGA CENTRALIZADOS
   const [isInitialLoading, setIsInitialLoading] = useState(true); 
@@ -41,6 +41,9 @@ const Prestamos: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [lastPage, setLastPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
+
+  // VARIABLE DE ESTADO COMPLETA QUE DETECTA TU FILTRO DINÁMICO POR ÍTEMS JSON
+  const [estadosPrestamoLista, setEstadosPrestamoLista] = useState<any[]>([]);
 
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [confirmDialog, setConfirmDialog] = useState({ show: false, title: '', message: '', onConfirm: () => {} });
@@ -76,6 +79,16 @@ const Prestamos: React.FC = () => {
   // Formato YYYY-MM para filtrar por mes actual
   const currentMonthValue = `${currentYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
 
+  // Convierte "YYYY-MM-DD" o "YYYY-MM-DD HH:MM:SS" a "DD/MM/YYYY" de forma segura sin problemas de zona horaria
+  const formatFechaLatina = (fechaStr: string) => {
+    if (!fechaStr) return '-';
+    const soloFecha = fechaStr.split(' ')[0];
+    const partes = soloFecha.split('-');
+    if (partes.length === 3) {
+      return `${partes[2]}/${partes[1]}/${partes[0]}`;
+    }
+    return soloFecha;
+  };
   const [formData, setFormData] = useState<any>({ 
     Prestamo_ID: null, Usuario_ID: '', NombreEstudianteText: '', PersonalEntrega_ID: '', PersonalRecibe_ID: '', 
     FechaSalida: '', FechaDevolucionEstablecida: '', EstadoPrestamo: 'Activo'
@@ -96,7 +109,8 @@ useIonViewWillEnter(() => {
 
     setFormData({ 
       Prestamo_ID: null, Usuario_ID: '', NombreEstudianteText: '', PersonalEntrega_ID: '', PersonalRecibe_ID: '', 
-      FechaSalida: fechaHoyStr, FechaDevolucionEstablecida: '', EstadoPrestamo: 'Activo' 
+      FechaSalida: fechaHoyStr, FechaDevolucionEstablecida: '', 
+      EstadoPrestamo: '' /* 🏛️ UNIVERSAL: Posiciona el selector en "-- Seleccionar --" */
     });
     
     // NUEVO: Limpiar buscador, filtros y apagar cualquier alerta abierta
@@ -111,9 +125,35 @@ useIonViewWillEnter(() => {
     const loadTableData = async () => {
         if (records.length === 0) setIsInitialLoading(true);
         try {
-            // CORRECCIÓN: Le mandamos a la tabla los valores limpios ('', 'todo') en lugar del estado viejo
             await fetchPage(1, '', 'todo'); 
             
+            const resConfig = await api.get('/configuraciones/Prestamos');
+            const content = resConfig.data?.data;
+            let raw = null;
+
+            if (content) {
+              if (Array.isArray(content)) {
+                const matchedRow = content.find((r: any) => r.Clave === 'estados_prestamo');
+                raw = matchedRow ? matchedRow.Valor : null;
+              } else {
+                raw = content.estados_prestamo;
+              }
+            }
+
+            const arrPrestamo = Array.isArray(raw) ? raw : (typeof raw === 'string' ? JSON.parse(raw) : []);
+            
+            // REQUERIMIENTO 5: Filtra y remueve los estados de trámite que el bibliotecario ocultó globalmente
+            const filtrados = arrPrestamo.filter((item: any) => typeof item === 'string' ? true : !item.hidden);
+            setEstadosPrestamoLista(filtrados);
+
+            /* 🏛️ AUTOMÁTICO: Escanea la lista elástica para ver qué nombre visual tiene asignada la acción raíz "Activo" */
+            const opcionActiva = filtrados.find((item: any) => typeof item === 'string' ? item === 'Activo' : item.action === 'Activo');
+            if (opcionActiva) {
+              /* 🏛️ FIJADO: Ahora extrae primero .label ("Presente") para que React lo posicione correctamente */
+              const valorActivo = typeof opcionActiva === 'string' ? opcionActiva : (opcionActiva.label || opcionActiva.action || '');
+              setFormData((prev: any) => ({ ...prev, EstadoPrestamo: valorActivo }));
+            }
+
             setCatalogoDB([]);
             setAutoresDB([]);
             setEditorialesDB([]);
@@ -221,6 +261,11 @@ useIonViewWillEnter(() => {
       const hoy = new Date();
       const fechaHoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
 
+      /* 🏛️ AUTOMÁTICO: Recupera el nombre elástico activo directamente del estado de la pantalla */
+      const opcionActiva = estadosPrestamoLista.find((item: any) => typeof item === 'string' ? item === 'Activo' : item.action === 'Activo');
+      /* 🏛️ FIJADO: Cambiado para que extraiga primero .label ("Presente") de forma nativa */
+      const valorActivo = opcionActiva ? (typeof opcionActiva === 'string' ? opcionActiva : (opcionActiva.label || opcionActiva.action || '')) : '';
+
       setFormData({ 
         Prestamo_ID: null, 
         Usuario_ID: '', 
@@ -229,7 +274,7 @@ useIonViewWillEnter(() => {
         PersonalRecibe_ID: '', 
         FechaSalida: fechaHoyStr, 
         FechaDevolucionEstablecida: '', 
-        EstadoPrestamo: 'Activo' 
+        EstadoPrestamo: valorActivo /* 💡 Autoselecciona "Presente" (o la etiqueta activa de la BD) de inmediato */
       });
     }
     setShowForm(true);
@@ -238,8 +283,9 @@ useIonViewWillEnter(() => {
   const handleAgregarCodigoSeleccionado = (invEncontrado: any) => {
     if (unidadesSeleccionadas.some(u => u.Unidad_ID === invEncontrado.Unidad_ID)) return;
     
+    /* 🏛️ UNIVERSAL: Filtra usando la propiedad lógica para saber cuántas copias reales quedan libres */
     const copiasDisponibles = inventarioResultados.filter(
-        item => item.Recurso_ID === invEncontrado.Recurso_ID && item.EstadoDisponibilidad === 'Disponible'
+        item => item.Recurso_ID === invEncontrado.Recurso_ID && item.EstadoDisponibilidad_Logico === 'Disponible'
     ).length;
 
     if (copiasDisponibles === 1) {
@@ -588,8 +634,8 @@ useIonViewWillEnter(() => {
         'Recursos Prestados': r.RecursosPrestados, 
         'Entregó': r.NombrePersonalEntrega, 
         'Recibió': r.NombrePersonalRecibe,
-        'Salida': r.FechaSalida ? r.FechaSalida.split(' ')[0] : '-',
-        'Devolución': r.FechaDevolucionEstablecida ? r.FechaDevolucionEstablecida.split(' ')[0] : '-', 
+        'Salida': formatFechaLatina(r.FechaSalida),
+        'Devolución': formatFechaLatina(r.FechaDevolucionEstablecida),
         'Estado': r.EstadoPrestamo
       })));
       const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Prestamos'); XLSX.writeFile(wb, `UPVE_Prestamos.xlsx`);
@@ -611,7 +657,7 @@ useIonViewWillEnter(() => {
           `${r.NombreEstudiante}\nMatrícula: ${r.Matricula}`,
           r.RecursosPrestados, 
           `Entregó: ${r.NombrePersonalEntrega}\nRecibió: ${r.NombrePersonalRecibe}`,
-          `Sal: ${r.FechaSalida ? r.FechaSalida.split(' ')[0] : '-'}\nDev: ${r.FechaDevolucionEstablecida ? r.FechaDevolucionEstablecida.split(' ')[0] : '-'}`, 
+          `Sal: ${formatFechaLatina(r.FechaSalida)}\nDev: ${formatFechaLatina(r.FechaDevolucionEstablecida)}`,
           r.EstadoPrestamo
       ]);
 
@@ -849,6 +895,8 @@ useIonViewWillEnter(() => {
                   <tr><td><strong>Recursos Prestados</strong></td><td>Filtra tecleando el título del recurso o código de unidad.</td><td><code className="code-badge">Agritech</code></td></tr>
                   <tr><td><strong>Entregó / Recibió</strong></td><td>Busca por el nombre del personal que procesó el trámite.</td><td><code className="code-badge">Gaxiola</code></td></tr>
                   <tr><td><strong>Estado</strong></td><td>Busca por la situación actual del préstamo.</td><td><code className="code-badge">Activo</code> o <code className="code-badge">Devuelto</code></td></tr>
+                  <tr><td><strong>Fecha de Salida</strong></td><td>Busca por año, mes/año o fecha exacta en formato latino.</td><td><code className="code-badge">2026</code>, <code className="code-badge">07/2026</code> o <code className="code-badge">20/07/2026</code></td></tr>
+                  <tr><td><strong>Rango de Fechas</strong></td><td>Filtra un periodo específico separando dos fechas con " a ".</td><td><code className="code-badge">13/07/2026 a 20/07/2026</code></td></tr>
                 </tbody>
               </table>
               <p style={{ fontSize: '12px', color: '#666', marginTop: '10px', fontStyle: 'italic' }}>
@@ -874,8 +922,8 @@ useIonViewWillEnter(() => {
           <div className="sticky-searchbar">
             <IonSearchbar 
               style={{ flex: 1, minWidth: '200px' }}
-              placeholder="Buscar código, alumno, personal o estado..." 
-              value={searchQuery} 
+              placeholder="Buscar alumno, código, estado o fecha (ej: 13/07/2026 a 20/07/2026)..." 
+              value={searchQuery}
               onIonInput={(e: any) => {
                 const newValue = e.target.value || '';
                 setSearchQuery(newValue);
@@ -990,7 +1038,8 @@ useIonViewWillEnter(() => {
                            <div className="flex-column align-center" style={{ padding: '15px', color: '#6b7280', fontSize: '13px' }}>Buscando en servidor...</div>
                         ) : inventarioResultados.length > 0 ? (
                           inventarioResultados.map(inv => {
-                            const isDisponible = inv.EstadoDisponibilidad === 'Disponible';
+                            /* 🏛️ UNIVERSAL: Ahora evalúa la acción raíz lógica oculta en lugar de la etiqueta visual string */
+                            const isDisponible = inv.EstadoDisponibilidad_Logico === 'Disponible';
                             return (
                               <div key={inv.Unidad_ID} className={`search-result-item ${!isDisponible ? 'disabled' : ''}`} onClick={() => isDisponible && handleAgregarCodigoSeleccionado(inv)}>
                                 <span className="item-title"><span className="item-id">{inv.Unidad_ID}</span> - {inv.Titulo}</span>
@@ -1053,10 +1102,18 @@ useIonViewWillEnter(() => {
                 <div className="form-group flex-1">
                   <label>ESTADO DEL PRÉSTAMO *</label>
                   <select className="custom-input select-input" value={formData.EstadoPrestamo || ''} onChange={e => setFormData({...formData, EstadoPrestamo: e.target.value})}>
-                    <option value="Activo">Activo</option>
-                    <option value="Devuelto">Devuelto</option>
-                    <option value="Atrasado">Atrasado</option>
-                    <option value="Finalizado (Sanción)">Finalizado (Sanción)</option> {/* <--- OPCIÓN NUEVA */}
+                    <option value="" disabled>-- Seleccionar --</option>
+                    {estadosPrestamoLista.length > 0 ? estadosPrestamoLista.map((item, idx) => (
+                      /* 🏛️ UNIVERSAL: Cambiado a item.label para que el formulario mande la palabra elástica ("Presente") al backend */
+                      <option key={idx} value={typeof item === 'string' ? item : (item.label || '')}>
+                        {typeof item === 'string' ? item : (item.label || '')}
+                      </option>
+                    )) : (
+                      <>
+                        <option value="Activo">Activo</option><option value="Devuelto">Devuelto</option>
+                        <option value="Atrasado">Atrasado</option><option value="Finalizado (Sanción)">Finalizado (Sanción)</option>
+                      </>
+                    )}
                   </select>
                 </div>
               </div>
@@ -1068,7 +1125,11 @@ useIonViewWillEnter(() => {
                         <select 
                             className="custom-input select-input" 
                             value={formData.PersonalRecibe_ID || ''} 
-                            onChange={e => setFormData({...formData, PersonalRecibe_ID: e.target.value, EstadoPrestamo: 'Devuelto'})}
+                            onChange={e => {
+                              const opcionDevuelto = estadosPrestamoLista.find((item: any) => typeof item === 'string' ? item === 'Devuelto' : item.action === 'Devuelto');
+                              const valorDevuelto = opcionDevuelto ? (typeof opcionDevuelto === 'string' ? opcionDevuelto : (opcionDevuelto.label || opcionDevuelto.action || '')) : 'Devuelto';
+                              setFormData({...formData, PersonalRecibe_ID: e.target.value, EstadoPrestamo: valorDevuelto});
+                            }}
                         >
                             <option value="">Aún no devuelto...</option>
                             {personalDB.map((pers) => (<option key={pers.Personal_ID} value={pers.Personal_ID}>{pers.NombrePersonal} {pers.ApellidoPaterno || ''}</option>))}
@@ -1116,10 +1177,10 @@ useIonViewWillEnter(() => {
                           <span style={{color: '#6b7280'}}>Recibió:</span> {r.NombrePersonalRecibe}
                       </td>
                       <td style={{ fontSize: '13px', verticalAlign: 'middle' }}>
-                          Sal: {r.FechaSalida ? r.FechaSalida.split(' ')[0] : '-'} <br/>
-                          Dev: {r.FechaDevolucionEstablecida ? r.FechaDevolucionEstablecida.split(' ')[0] : '-'}
+                          Sal: {formatFechaLatina(r.FechaSalida)} <br/>
+                          Dev: {formatFechaLatina(r.FechaDevolucionEstablecida)}
                       </td>
-                      <td style={{ textAlign: 'center', verticalAlign: 'middle' }}><span className={getEstadoBadgeClass(r.EstadoPrestamo)}>{r.EstadoPrestamo}</span></td>
+                      <td style={{ textAlign: 'center', verticalAlign: 'middle' }}><span className={getEstadoBadgeClass(r.EstadoPrestamo_Logico)}>{r.EstadoPrestamo}</span></td>
                       <td style={{ textAlign: 'center', verticalAlign: 'middle', minWidth: '120px' }}>
                         <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'nowrap', gap: '8px' }}>
                             <IonButton className="btn-action btn-edit" fill="clear" onClick={() => openForm(r)} title="Editar"><IonIcon icon={createOutline} /></IonButton>

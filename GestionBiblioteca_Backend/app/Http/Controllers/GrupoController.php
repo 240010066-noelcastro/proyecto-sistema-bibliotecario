@@ -35,7 +35,12 @@ class GrupoController extends Controller
                 }
             }
 
-            // 2. Si React pide todos los datos (para Excel/PDF)
+            // Filtro por Estado (Solo aplica si no es 'Todos')
+            if ($request->has('estado') && !empty($request->estado) && $request->estado !== 'Todos') {
+                $query->where('grupos.Estado', '=', $request->estado);
+            }
+
+            // 3. Si React pide todos los datos (para Excel/PDF)
             if ($request->has('all')) {
                 return response()->json(['success' => true, 'data' => $query->get()]);
             }
@@ -49,12 +54,28 @@ class GrupoController extends Controller
         }
     }
 
+    public function gruposPublicos()
+    {
+        try {
+            $grupos = DB::table('grupos')
+                ->join('carreras', 'grupos.Carrera_ID', '=', 'carreras.Carrera_ID')
+                ->select('grupos.*', 'carreras.NombreCarrera', 'carreras.Siglas')
+                ->where('grupos.Estado', '=', 'Activo')
+                ->get();
+
+            return response()->json(['success' => true, 'data' => $grupos]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
     public function store(Request $request)
     {
         try {
             $request->validate([
                 'NombreGrupo' => 'required|string|max:20',
-                'Carrera_ID' => 'required|integer|exists:carreras,Carrera_ID', 
+                'Carrera_ID'  => 'required|integer|exists:carreras,Carrera_ID', 
+                'Estado'      => 'required|string|in:Activo,Inactivo'
             ]);
 
             $grupo = Grupo::create($request->all());
@@ -62,7 +83,7 @@ class GrupoController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Grupo creado con éxito',
-                'data' => $grupo
+                'data'    => $grupo
             ], 201);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
@@ -76,7 +97,8 @@ class GrupoController extends Controller
             
             $request->validate([
                 'NombreGrupo' => 'required|string|max:20',
-                'Carrera_ID' => 'required|integer|exists:carreras,Carrera_ID', 
+                'Carrera_ID'  => 'required|integer|exists:carreras,Carrera_ID', 
+                'Estado'      => 'required|string|in:Activo,Inactivo'
             ]);
 
             $grupo->update($request->all());

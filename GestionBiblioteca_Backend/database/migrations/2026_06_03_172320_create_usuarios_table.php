@@ -17,7 +17,6 @@ return new class extends Migration {
             $table->string('ApellidoMaterno', 50)->nullable();
             
             $table->string('CorreoElectronico', 100)->unique();
-            $table->string('password', 255); // Obligatorio para todos
             
             $table->string('Matricula', 30)->unique()->nullable(); // Nullable para admins
             $table->string('Telefono', 20)->nullable();

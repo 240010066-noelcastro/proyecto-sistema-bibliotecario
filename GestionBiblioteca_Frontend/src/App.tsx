@@ -22,8 +22,6 @@ import './theme/variables.css';
 /* Importación de Páginas */
 import Login from './pages/Auth/Login'; 
 import CompletarRegistro from './pages/Auth/CompletarRegistro';
-import OlvidePassword from './pages/Auth/OlvidePassword'; 
-import RestablecerPassword from './pages/Auth/RestablecerPassword';
 import Dashboard from './pages/Dashboard/Dashboard';
 import Carreras from './pages/Carreras/Carreras';
 import Grupos from './pages/Grupos/Grupos'; 
@@ -37,6 +35,8 @@ import Usuarios from './pages/Usuarios/Usuarios';
 import TabsUsuario from './pages/PortalUsuario/TabsUsuario';
 import Configuracion from './pages/Configuracion/Configuracion';
 import DetalleRecurso from './pages/PortalUsuario/DetalleRecurso/DetalleRecurso';
+import MisPedidos from './pages/PortalUsuario/MisPedidos/MisPedidos';
+import Historial from './pages/PortalUsuario/Historial/Historial';
 setupIonicReact();
 
 const App: React.FC = () => {
@@ -60,12 +60,6 @@ const App: React.FC = () => {
           <Route path="/completar-registro" exact={true}><CompletarRegistro /></Route>
 
           {/* =========================================================
-                  2. RUTAS PÚBLICAS DE RECUPERACIÓN DE CONTRASEÑA
-              ========================================================= */}
-          <Route path="/olvide-password" exact={true}><OlvidePassword /></Route>
-          <Route path="/restablecer-password" exact={true}><RestablecerPassword /></Route>
-
-          {/* =========================================================
               3. PORTAL DE USUARIO (SOLO PARA ALUMNOS)
               ========================================================= */}
           <Route path="/portal" render={() => {
@@ -80,6 +74,12 @@ const App: React.FC = () => {
 
           {/* RUTA DE DETALLE INDEPENDIENTE PARA ALUMNOS */}
           <Route path="/portal/recurso/:id" component={DetalleRecurso} exact={true} />
+
+          {/* 🏛️ Ruta limpia y exclusiva para pedidos activos en posesión */}
+          <Route path="/portal/pedidos" component={MisPedidos} exact={true} />
+
+          {/* 🏛️ NUEVO: Ruta registrada independiente para la bitácora del pasado */}
+          <Route path="/portal/historial" component={Historial} exact={true} />
 
 
           {/* =========================================================

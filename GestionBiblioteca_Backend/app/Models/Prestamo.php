@@ -17,6 +17,7 @@ class Prestamo extends Model
         'PersonalRecibe_ID', 
         'FechaSalida', 
         'FechaDevolucionEstablecida', 
-        'EstadoPrestamo'
-    ]; 
+        'EstadoPrestamo',
+        'EstadoPrestamo_Logico'
+    ];
 }

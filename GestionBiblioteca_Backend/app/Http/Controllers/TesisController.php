@@ -7,18 +7,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use App\Models\RecursoCatalogo;
 use App\Models\Tesis;
+use App\Http\Requests\StoreTesisRequest;
+use App\Http\Requests\UpdateTesisRequest;
 
 class TesisController extends Controller
 {
-    public function store(Request $request)
+   public function store(StoreTesisRequest $request)
     {
-        $request->validate([
-            'Titulo' => 'required|string|max:150|unique:recursos_catalogo,Titulo',
-            'Cantidad_Paginas' => 'nullable|integer|min:0',
-        ], [
-            'Titulo.unique' => 'Este título ya se encuentra registrado.'
-        ]);
-
         DB::beginTransaction();
         try {
             $path = $request->hasFile('imagen') ? $request->file('imagen')->store('portadas', 'public') : $request->input('Imagen_path');
@@ -62,15 +57,8 @@ class TesisController extends Controller
         }
     }
 
-    public function update(Request $request, $id)
+    public function update(UpdateTesisRequest $request, $id)
     {
-        $request->validate([
-            'Titulo' => 'required|string|max:150|unique:recursos_catalogo,Titulo,' . $id . ',Recurso_ID',
-            'Cantidad_Paginas' => 'nullable|integer|min:0',
-        ], [
-            'Titulo.unique' => 'Este título ya se encuentra registrado.'
-        ]);
-
         DB::beginTransaction();
         try {
             $catalogo = RecursoCatalogo::findOrFail($id);

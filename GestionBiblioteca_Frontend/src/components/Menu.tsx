@@ -18,18 +18,25 @@ import {
 } from 'ionicons/icons';
 import './Menu.css';
 
+// @ts-ignore
+import api from '../services/api';
 const Menu: React.FC = () => {
   const location = useLocation();
 
-  const handleLogout = () => {
-    // Borramos todas las llaves de sessionStorage que creamos
-    sessionStorage.removeItem('token');
-    sessionStorage.removeItem('usuario');
-    sessionStorage.removeItem('rol');
-    sessionStorage.removeItem('datos_google_temporales');
-    
-    // Forzamos la recarga al login de administrador
-    window.location.href = '/';
+  const handleLogout = async () => {
+    try {
+      // 1. Notificamos al backend para eliminar el token activo de la BD
+      await api.post('/logout');
+    } catch (error) {
+      console.error("Error al revocar token en servidor", error);
+    } finally {
+      // 2. Limpiamos por completo el almacenamiento local
+      sessionStorage.clear();
+      localStorage.clear();
+
+      // 3. Redirigimos al Login
+      window.location.href = '/';
+    }
   };
 
   return (

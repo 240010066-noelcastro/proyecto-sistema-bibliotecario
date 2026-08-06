@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\Sancion;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon; 
+use Carbon\Carbon;
+use App\Http\Requests\StoreSancionRequest;
+use App\Http\Requests\UpdateSancionRequest;
 
 class SancionController extends Controller
 {
@@ -14,7 +16,6 @@ class SancionController extends Controller
         try {
             $search = $request->input('search');
             $filtroTipo = $request->input('filtroTipo');
-            $rangoFecha = $request->input('rangoFecha'); 
             $filtroBaja = $request->input('filtroBaja');
 
             $query = DB::table('sanciones')
@@ -23,62 +24,76 @@ class SancionController extends Controller
                 ->leftJoin('inventario_unidades', 'detalles_prestamo.Unidad_ID', '=', 'inventario_unidades.Unidad_ID')
                 ->leftJoin('recursos_catalogo', 'inventario_unidades.Recurso_ID', '=', 'recursos_catalogo.Recurso_ID')
                 ->select(
-                    'sanciones.*',
-                    DB::raw("CONCAT(usuarios.NombreUsuario, ' ', IFNULL(usuarios.ApellidoPaterno, '')) AS NombreEstudiante"),
-                    'usuarios.Matricula',
-                    'detalles_prestamo.Unidad_ID',
-                    'recursos_catalogo.Titulo',
-                    'recursos_catalogo.TipoRecurso',
-                    'inventario_unidades.EstadoDisponibilidad'
-                );
+                'sanciones.*',
+                DB::raw("CONCAT(usuarios.NombreUsuario, ' ', IFNULL(usuarios.ApellidoPaterno, '')) AS NombreEstudiante"),
+                'usuarios.Matricula',
+                'detalles_prestamo.Unidad_ID',
+                'recursos_catalogo.Titulo',
+                'recursos_catalogo.TipoRecurso',
+                'inventario_unidades.EstadoDisponibilidad',
+                /* 🏛️ ELÁSTICO: Traemos la raíz lógica para que la tabla unificada sepa si es una baja real */
+                'inventario_unidades.EstadoDisponibilidad_Logico'
+            );
 
             // Filtro por Tipo de Recurso
             if ($filtroTipo && $filtroTipo !== 'Todos') {
                 $query->where('recursos_catalogo.TipoRecurso', $filtroTipo);
             }
 
-            // NUEVO: Filtro por Rango de Fechas (Estilo Dashboard)
-            if ($rangoFecha && $rangoFecha !== 'todo') {
-                $now = Carbon::now();
-                if ($rangoFecha === 'hoy') {
-                    $query->whereDate('sanciones.FechaGeneracion', $now->toDateString());
-                } else if ($rangoFecha === '7_dias') {
-                    $query->whereBetween('sanciones.FechaGeneracion', [$now->copy()->subDays(7)->toDateString(), $now->toDateString()]);
-                } else if ($rangoFecha === '30_dias') {
-                    $query->whereBetween('sanciones.FechaGeneracion', [$now->copy()->subDays(30)->toDateString(), $now->toDateString()]);
-                } else if (preg_match('/^\d{4}-\d{2}$/', $rangoFecha)) {
-                    $mes = Carbon::createFromFormat('Y-m', $rangoFecha);
-                    $inicioMes = $mes->startOfMonth()->toDateString();
-                    $finMes = $mes->endOfMonth()->toDateString();
-                    $query->whereBetween('sanciones.FechaGeneracion', [$inicioMes, $finMes]);
-                }
-            }
-
-            // NUEVO: Filtro Exacto de Baja (A prueba de errores de texto)
+            // NUEVO: Filtro Exacto de Baja guiado por la regla heredada
             if ($filtroBaja && $filtroBaja !== 'Todos') {
                 if ($filtroBaja === 'Si') {
-                    $query->where('inventario_unidades.EstadoDisponibilidad', 'Baja');
+                    $query->where('inventario_unidades.EstadoDisponibilidad_Logico', 'Baja');
                 } else if ($filtroBaja === 'No') {
-                    $query->where('inventario_unidades.EstadoDisponibilidad', '!=', 'Baja');
+                    $query->where('inventario_unidades.EstadoDisponibilidad_Logico', '!=', 'Baja');
                 }
             }
 
-            // Buscador por texto (Incluye la Fecha de Generación)
+            // BUSCADOR UNIFICADO INTELIGENTE (LATINO DD/MM/YYYY + RANGOS)
+            $isRangeSearch = false;
             if ($search) {
-                $query->where(function($q) use ($search) {
-                    $q->where('sanciones.Sancion_ID', 'LIKE', "%{$search}%")
-                      ->orWhere('usuarios.Matricula', 'LIKE', "%{$search}%")
-                      ->orWhereRaw("CONCAT(usuarios.NombreUsuario, ' ', IFNULL(usuarios.ApellidoPaterno, '')) LIKE ?", ["%{$search}%"])
-                      ->orWhere('sanciones.TipoSancion', 'LIKE', "%{$search}%")
-                      ->orWhere('recursos_catalogo.Titulo', 'LIKE', "%{$search}%")
-                      ->orWhere('inventario_unidades.Unidad_ID', 'LIKE', "%{$search}%")
-                      ->orWhere('sanciones.EstadoSancion', 'LIKE', "%{$search}%")
-                      ->orWhere('inventario_unidades.EstadoDisponibilidad', 'LIKE', "%{$search}%")
-                      ->orWhereRaw("CAST(sanciones.FechaGeneracion AS CHAR) LIKE ?", ["%{$search}%"]);
-                });
+                $search = trim($search);
+
+                // 1. RANGO DE FECHAS: "13/07/2026 a 17/07/2026"
+                if (preg_match('/^(\d{2}\/\d{2}\/\d{4})\s+a\s+(\d{2}\/\d{2}\/\d{4})$/i', $search, $matches)) {
+                    $fInicio = \Carbon\Carbon::createFromFormat('d/m/Y', $matches[1])->format('Y-m-d');
+                    $fFin    = \Carbon\Carbon::createFromFormat('d/m/Y', $matches[2])->format('Y-m-d');
+
+                    $query->whereBetween(DB::raw('DATE(sanciones.FechaGeneracion)'), [$fInicio, $fFin]);
+                    $isRangeSearch = true;
+                } 
+                // 2. FECHA EXACTA EN FORMATO LATINO: "20/07/2026" (Día/Mes/Año)
+                else if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $search, $m)) {
+                    $fechaSql = "{$m[3]}-{$m[2]}-{$m[1]}";
+                    $query->whereDate('sanciones.FechaGeneracion', $fechaSql);
+                } 
+                // 3. MES Y AÑO EN FORMATO LATINO: "07/2026" (Mes/Año)
+                else if (preg_match('/^(\d{2})\/(\d{4})$/', $search, $m)) {
+                    $mesAnioSql = "{$m[2]}-{$m[1]}";
+                    $query->where('sanciones.FechaGeneracion', 'LIKE', "%{$mesAnioSql}%");
+                } 
+                // 4. BÚSQUEDA GENERAL
+                else {
+                    $query->where(function($q) use ($search) {
+                        $q->where('sanciones.Sancion_ID', 'LIKE', "%{$search}%")
+                          ->orWhere('usuarios.Matricula', 'LIKE', "%{$search}%")
+                          ->orWhereRaw("CONCAT(usuarios.NombreUsuario, ' ', IFNULL(usuarios.ApellidoPaterno, '')) LIKE ?", ["%{$search}%"])
+                          ->orWhere('sanciones.TipoSancion', 'LIKE', "%{$search}%")
+                          ->orWhere('recursos_catalogo.Titulo', 'LIKE', "%{$search}%")
+                          ->orWhere('inventario_unidades.Unidad_ID', 'LIKE', "%{$search}%")
+                          ->orWhere('sanciones.EstadoSancion', 'LIKE', "%{$search}%")
+                          ->orWhere('inventario_unidades.EstadoDisponibilidad', 'LIKE', "%{$search}%")
+                          ->orWhereRaw("CAST(sanciones.FechaGeneracion AS CHAR) LIKE ?", ["%{$search}%"]);
+                    });
+                }
             }
 
-            $query->orderBy('sanciones.Sancion_ID', 'desc');
+            // Si se filtró por rango muestra primero la fecha más cercana; si no, ordena por ID descendente
+            if ($isRangeSearch) {
+                $query->orderBy('sanciones.FechaGeneracion', 'asc');
+            } else {
+                $query->orderBy('sanciones.Sancion_ID', 'desc');
+            }
 
             if ($request->has('all')) {
                 return response()->json(['success' => true, 'data' => $query->get()]);
@@ -100,7 +115,7 @@ class SancionController extends Controller
                 ->join('recursos_catalogo', 'inventario_unidades.Recurso_ID', '=', 'recursos_catalogo.Recurso_ID')
                 ->leftJoin('sanciones', 'detalles_prestamo.DetallesPrestamo_ID', '=', 'sanciones.DetallesPrestamo_ID')
                 ->whereNull('sanciones.Sancion_ID') 
-                ->whereIn('prestamos.EstadoPrestamo', ['Activo', 'Atrasado'])
+                ->whereIn('prestamos.EstadoPrestamo_Logico', ['Activo', 'Atrasado'])
                 ->select(
                     'detalles_prestamo.DetallesPrestamo_ID',
                     'prestamos.Prestamo_ID',
@@ -117,70 +132,64 @@ class SancionController extends Controller
         }
     }
 
-    public function store(Request $request)
+    public function store(StoreSancionRequest $request)
     {
         DB::beginTransaction();
         try {
-            $request->validate([
-            'Usuario_ID' => 'required|integer|exists:usuarios,Usuario_ID', 
-            'DetallesPrestamo_ID' => 'nullable|integer|exists:detalles_prestamo,DetallesPrestamo_ID',
-            'TipoSancion' => 'required|string|max:50',
-            'MontoPago' => 'required|numeric|min:0',
-            'EstadoSancion' => 'required|string|max:30',
-            'FechaGeneracion' => 'required|date',
-            'FechaPago' => 'nullable|date', // NUEVA VALIDACIÓN
-            'Observaciones' => 'nullable|string|max:250',
-        ]);
+            $validated = $request->validated();
 
-        $sancion = Sancion::create([
-            'Usuario_ID' => $request->Usuario_ID,
-            'DetallesPrestamo_ID' => $request->DetallesPrestamo_ID,
-            'TipoSancion' => $request->TipoSancion,
-            'MontoPago' => $request->MontoPago,
-            'EstadoSancion' => $request->EstadoSancion,
-            'FechaGeneracion' => $request->FechaGeneracion,
-            // NUEVO: Solo guarda la fecha de pago si la sanción se marca como Pagada
-            'FechaPago' => $request->EstadoSancion === 'Pagado' ? $request->FechaPago : null,
-            'Observaciones' => $request->Observaciones,
-        ]);
+            // 🏛️ MAPEAR ACCIÓN RAÍZ HEREDADA
+            $estadoSancionLogico = $this->getLogicaRaiz('Sanciones', 'estados_sancion', $validated['EstadoSancion']);
 
-            if ($request->DetallesPrestamo_ID) {
-                $detalle = DB::table('detalles_prestamo')->where('DetallesPrestamo_ID', $request->DetallesPrestamo_ID)->first();
+            $sancion = Sancion::create([
+                'Usuario_ID'           => $validated['Usuario_ID'],
+                'DetallesPrestamo_ID'  => $validated['DetallesPrestamo_ID'] ?? null,
+                'TipoSancion'          => $validated['TipoSancion'],
+                'MontoPago'            => $validated['MontoPago'],
+                'EstadoSancion'        => $validated['EstadoSancion'],
+                'EstadoSancion_Logico' => $estadoSancionLogico,
+                'FechaGeneracion'      => $validated['FechaGeneracion'],
+                'FechaPago'            => $validated['EstadoSancion'] === 'Pagado' ? ($validated['FechaPago'] ?? null) : null,
+                'Observaciones'        => $validated['Observaciones'] ?? null,
+            ]);
+
+            if (!empty($validated['DetallesPrestamo_ID'])) {
+                $detalle = DB::table('detalles_prestamo')->where('DetallesPrestamo_ID', $validated['DetallesPrestamo_ID'])->first();
                 if ($detalle) {
-                    if ($request->DarDeBaja) {
-                        $estadoFisico = ($request->TipoSancion === 'Material Extraviado') ? 'Extraviado' : 'Malo / Dañado';
-                        DB::table('inventario_unidades')
-                            ->where('Unidad_ID', $detalle->Unidad_ID)
-                            ->update([
-                                'EstadoDisponibilidad' => 'Baja', 
-                                'EstadoFisicoInicial' => $estadoFisico,
-                                'updated_at' => now()
-                            ]);
-                    }
-
-                    // CIERRE DE PRÉSTAMO INTELIGENTE: Evita que se pisen los estados
-                    if ($request->DarDeBaja) {
-                        // Si es baja, el préstamo muere con estatus administrativo especial de por vida
-                        DB::table('prestamos')
-                            ->where('Prestamo_ID', $detalle->Prestamo_ID)
-                            ->update([
-                                'EstadoPrestamo' => 'Finalizado (Sanción)',
-                                'updated_at' => now()
-                            ]);
-                    } else if (in_array($request->EstadoSancion, ['Pagado', 'Condonado'])) {
-                        // Si NO es baja y ya se resolvió el pago, vuelve como devolución limpia
-                        DB::table('prestamos')
-                            ->where('Prestamo_ID', $detalle->Prestamo_ID)
-                            ->update([
-                                'EstadoPrestamo' => 'Devuelto',
-                                'updated_at' => now()
-                            ]);
+                    if (!empty($validated['DarDeBaja'])) {
+                        $estadoFisico = ($validated['TipoSancion'] === 'Material Extraviado') ? 'Extraviado' : 'Malo / Dañado';
 
                         DB::table('inventario_unidades')
                             ->where('Unidad_ID', $detalle->Unidad_ID)
                             ->update([
-                                'EstadoDisponibilidad' => 'Disponible',
-                                'updated_at' => now()
+                                'EstadoDisponibilidad'        => $this->getVisualPorDefecto('Inventario', 'Baja', 'Baja'), 
+                                'EstadoDisponibilidad_Logico' => 'Baja', 
+                                'EstadoFisicoInicial'          => $estadoFisico,
+                                'updated_at'                  => now()
+                            ]);
+
+                        DB::table('prestamos')
+                            ->where('Prestamo_ID', $detalle->Prestamo_ID)
+                            ->update([
+                                'EstadoPrestamo'        => $this->getVisualPorDefecto('Prestamos', 'Finalizado (Sanción)', 'Finalizado (Sanción)'), 
+                                'EstadoPrestamo_Logico' => 'Finalizado (Sanción)', 
+                                'updated_at'            => now()
+                            ]);
+                    } else if (in_array($estadoSancionLogico, ['Pagado', 'Condonado'])) {
+                        DB::table('prestamos')
+                            ->where('Prestamo_ID', $detalle->Prestamo_ID)
+                            ->update([
+                                'EstadoPrestamo'        => $this->getVisualPorDefecto('Prestamos', 'Devuelto', 'Devuelto'), 
+                                'EstadoPrestamo_Logico' => 'Devuelto', 
+                                'updated_at'            => now()
+                            ]);
+
+                        DB::table('inventario_unidades')
+                            ->where('Unidad_ID', $detalle->Unidad_ID)
+                            ->update([
+                                'EstadoDisponibilidad'        => $this->getVisualPorDefecto('Inventario', 'Disponible', 'Disponible'), 
+                                'EstadoDisponibilidad_Logico' => 'Disponible', 
+                                'updated_at'                  => now()
                             ]);
                     }
                 }
@@ -190,7 +199,7 @@ class SancionController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Sanción registrada exitosamente',
-                'data' => $sancion
+                'data'    => $sancion
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -198,69 +207,81 @@ class SancionController extends Controller
         }
     }
 
-    public function update(Request $request, $id)
+    public function update(UpdateSancionRequest $request, $id)
     {
         DB::beginTransaction();
         try {
             $sancion = Sancion::findOrFail($id);
-            
-            $request->validate([
-            'Usuario_ID' => 'required|integer|exists:usuarios,Usuario_ID', 
-            'DetallesPrestamo_ID' => 'nullable|integer|exists:detalles_prestamo,DetallesPrestamo_ID',
-            'TipoSancion' => 'required|string|max:50',
-            'MontoPago' => 'required|numeric|min:0',
-            'EstadoSancion' => 'required|string|max:30',
-            'FechaGeneracion' => 'required|date',
-            'FechaPago' => 'nullable|date', // NUEVA VALIDACIÓN
-            'Observaciones' => 'nullable|string|max:250',
-        ]);
+            $validated = $request->validated();
+
+            // 🏛️ MAPEAR ACCIÓN RAÍZ HEREDADA
+            $estadoSancionLogico = $this->getLogicaRaiz('Sanciones', 'estados_sancion', $validated['EstadoSancion']);
 
             $sancion->update([
-                'Usuario_ID' => $request->Usuario_ID,
-                'DetallesPrestamo_ID' => $request->DetallesPrestamo_ID,
-                'TipoSancion' => $request->TipoSancion,
-                'MontoPago' => $request->MontoPago,
-                'EstadoSancion' => $request->EstadoSancion,
-                'FechaGeneracion' => $request->FechaGeneracion,
-                // NUEVO: Control de actualización de pago
-                'FechaPago' => $request->EstadoSancion === 'Pagado' ? $request->FechaPago : null,
-                'Observaciones' => $request->Observaciones,
+                'Usuario_ID'           => $validated['Usuario_ID'],
+                'DetallesPrestamo_ID'  => $validated['DetallesPrestamo_ID'] ?? null,
+                'TipoSancion'          => $validated['TipoSancion'],
+                'MontoPago'            => $validated['MontoPago'],
+                'EstadoSancion'        => $validated['EstadoSancion'],
+                'EstadoSancion_Logico' => $estadoSancionLogico,
+                'FechaGeneracion'      => $validated['FechaGeneracion'],
+                'FechaPago'            => $validated['EstadoSancion'] === 'Pagado' ? ($validated['FechaPago'] ?? null) : null,
+                'Observaciones'        => $validated['Observaciones'] ?? null,
             ]);
 
-            if ($request->DetallesPrestamo_ID) {
-                $detalle = DB::table('detalles_prestamo')->where('DetallesPrestamo_ID', $request->DetallesPrestamo_ID)->first();
+            if (!empty($validated['DetallesPrestamo_ID'])) {
+                $detalle = DB::table('detalles_prestamo')->where('DetallesPrestamo_ID', $validated['DetallesPrestamo_ID'])->first();
                 if ($detalle) {
                     $unidad = DB::table('inventario_unidades')->where('Unidad_ID', $detalle->Unidad_ID)->first();
                     
                     if ($unidad) {
                         // 1. SINCRONIZAR EL ESTADO DEL PRÉSTAMO
-                        if ($unidad->EstadoDisponibilidad === 'Baja') {
-                            // Si el libro ya es una baja en el sistema, el préstamo se queda cerrado por sanción obligatoriamente
+                        if ($unidad->EstadoDisponibilidad_Logico === 'Baja') {
                             DB::table('prestamos')
                                 ->where('Prestamo_ID', $detalle->Prestamo_ID)
-                                ->update(['EstadoPrestamo' => 'Finalizado (Sanción)', 'updated_at' => now()]);
+                                ->update([
+                                    'EstadoPrestamo'        => $this->getVisualPorDefecto('Prestamos', 'Finalizado (Sanción)', 'Finalizado (Sanción)'), 
+                                    'EstadoPrestamo_Logico' => 'Finalizado (Sanción)', 
+                                    'updated_at'            => now()
+                                ]);
                         } else {
-                            if (in_array($request->EstadoSancion, ['Pagado', 'Condonado'])) {
+                            if (in_array($estadoSancionLogico, ['Pagado', 'Condonado'])) {
                                 DB::table('prestamos')
                                     ->where('Prestamo_ID', $detalle->Prestamo_ID)
-                                    ->update(['EstadoPrestamo' => 'Devuelto', 'updated_at' => now()]);
-                            } else if ($request->EstadoSancion === 'Pendiente') {
+                                    ->update([
+                                        'EstadoPrestamo'        => $this->getVisualPorDefecto('Prestamos', 'Devuelto', 'Devuelto'), 
+                                        'EstadoPrestamo_Logico' => 'Devuelto', 
+                                        'updated_at'            => now()
+                                    ]);
+                            } else if ($estadoSancionLogico === 'Pendiente') {
                                 DB::table('prestamos')
                                     ->where('Prestamo_ID', $detalle->Prestamo_ID)
-                                    ->update(['EstadoPrestamo' => 'Atrasado', 'updated_at' => now()]);
+                                    ->update([
+                                        'EstadoPrestamo'        => $this->getVisualPorDefecto('Prestamos', 'Atrasado', 'Atrasado'), 
+                                        'EstadoPrestamo_Logico' => 'Atrasado', 
+                                        'updated_at'            => now()
+                                    ]);
                             }
                         }
 
                         // 2. LA REVERSA: SINCRONIZAR EL INVENTARIO
-                        if ($unidad->EstadoDisponibilidad !== 'Baja') {
-                            if (in_array($request->EstadoSancion, ['Pagado', 'Condonado'])) {
+                        if ($unidad->EstadoDisponibilidad_Logico !== 'Baja') {
+                            if (in_array($estadoSancionLogico, ['Pagado', 'Condonado'])) {
                                 DB::table('inventario_unidades')
                                     ->where('Unidad_ID', $detalle->Unidad_ID)
-                                    ->update(['EstadoDisponibilidad' => 'Disponible', 'updated_at' => now()]);
-                            } else if ($request->EstadoSancion === 'Pendiente') {
+                                    ->update([
+                                        'EstadoDisponibilidad'        => $this->getVisualPorDefecto('Inventario', 'Disponible', 'Disponible'), 
+                                        'EstadoDisponibilidad_Logico' => 'Disponible', 
+                                        'updated_at'                  => now()
+                                    ]);
+                            } else if ($estadoSancionLogico === 'Pendiente') {
                                 DB::table('inventario_unidades')
                                     ->where('Unidad_ID', $detalle->Unidad_ID)
-                                    ->update(['EstadoDisponibilidad' => 'Prestado', 'updated_at' => now()]);
+                                    ->update([
+                                        'EstadoDisponibilidad'        => $this->getVisualPorDefecto('Inventario', 'Prestado', 'Prestado'), 
+                                        'EstadoDisponibilidad_Logico' => 'Prestado', 
+                                        'updated_at'                  => now()
+                                    ]);
                             }
                         }
                     }
@@ -283,5 +304,41 @@ class SancionController extends Controller
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    // 🏛️ EXTRACTOR DE HERENCIA DE REGLAS DE NEGOCIO
+    private function getLogicaRaiz($modulo, $clave, $valorVisual)
+    {
+        $config = DB::table('configuraciones_sistema')->where('Modulo', $modulo)->where('Clave', $clave)->first();
+        if ($config) {
+            $items = json_decode($config->Valor, true);
+            if (is_array($items)) {
+                foreach ($items as $item) {
+                    if (($item['label'] ?? '') === $valorVisual) {
+                        return $item['action'] ?? $item['label'];
+                    }
+                }
+            }
+        }
+        return $valorVisual;
+    }
+
+    // 🏛️ EXTRACTOR POLIMÓRFICO DE VALORES VISUALES POR ACCIÓN LÓGICA BASE
+    private function getVisualPorDefecto($tipoModulo, $logicaRaiz, $valorBase)
+    {
+        if ($tipoModulo === 'Inventario') {
+            $sufijoClave = 'defecto_disp_';
+        } elseif ($tipoModulo === 'Prestamos') {
+            $sufijoClave = 'defecto_prestamo_';
+        } else {
+            $sufijoClave = 'defecto_sancion_';
+        }
+
+        $config = DB::table('configuraciones_sistema')
+            ->where('Modulo', 'Catalogo')
+            ->where('Clave', $sufijoClave . $logicaRaiz)
+            ->first();
+            
+        return $config ? $config->Valor : $valorBase;
     }
 }

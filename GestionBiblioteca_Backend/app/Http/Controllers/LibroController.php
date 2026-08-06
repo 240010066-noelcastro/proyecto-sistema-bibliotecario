@@ -7,20 +7,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use App\Models\RecursoCatalogo;
 use App\Models\Libro;
+use App\Http\Requests\StoreLibroRequest;
+use App\Http\Requests\UpdateLibroRequest;
 
 class LibroController extends Controller
 {
-    public function store(Request $request)
+    public function store(StoreLibroRequest $request)
     {
-        $request->validate([
-            'Titulo' => 'required|string|max:150|unique:recursos_catalogo,Titulo',
-            'ClasificacionISBN' => 'nullable|string|unique:libros,ClasificacionISBN',
-            'Cantidad_Paginas' => 'nullable|integer|min:0',
-        ], [
-            'Titulo.unique' => 'Este título ya se encuentra registrado.',
-            'ClasificacionISBN.unique' => 'Este ISBN ya se encuentra registrado.'
-        ]);
-
         DB::beginTransaction();
         try {
             $path = $request->hasFile('imagen') ? $request->file('imagen')->store('portadas', 'public') : $request->input('Imagen_path');
@@ -67,17 +60,8 @@ class LibroController extends Controller
         }
     }
 
-    public function update(Request $request, $id)
+    public function update(UpdateLibroRequest $request, $id)
     {
-        $request->validate([
-            'Titulo' => 'required|string|max:150|unique:recursos_catalogo,Titulo,' . $id . ',Recurso_ID',
-            'ClasificacionISBN' => 'nullable|string|unique:libros,ClasificacionISBN,' . $id . ',Recurso_ID',
-            'Cantidad_Paginas' => 'nullable|integer|min:0',
-        ], [
-            'Titulo.unique' => 'Este título ya se encuentra registrado.',
-            'ClasificacionISBN.unique' => 'Este ISBN ya pertenece a otro libro.'
-        ]);
-
         DB::beginTransaction();
         try {
             $catalogo = RecursoCatalogo::findOrFail($id);

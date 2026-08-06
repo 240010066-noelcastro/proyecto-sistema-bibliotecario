@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { IonContent, IonPage, IonIcon, IonList, IonItem, IonLabel, IonButton, IonInput, IonSelect, IonSelectOption, IonToast } from '@ionic/react';
-import { personOutline, mailOutline, cardOutline, callOutline, shieldCheckmarkOutline, schoolOutline, peopleOutline, cameraOutline, pencilOutline, saveOutline, closeOutline } from 'ionicons/icons';
+import React, { useEffect, useState, useRef } from 'react';
+import { IonContent, IonPage, IonIcon, IonList, IonItem, IonLabel, IonInput, IonSelect, IonSelectOption, IonToast } from '@ionic/react';
+// 🏛️ Se incluye arrowBackOutline en el catálogo de importaciones
+import { arrowBackOutline, personOutline, mailOutline, cardOutline, callOutline, shieldCheckmarkOutline, schoolOutline, peopleOutline, cameraOutline, pencilOutline, saveOutline, closeOutline } from 'ionicons/icons';
 // @ts-ignore
 import api from '../../../services/api';
 import './Perfil.css';
@@ -8,7 +9,9 @@ import './Perfil.css';
 const Perfil: React.FC = () => {
   const [usuario, setUsuario] = useState<any>(null);
   const [grupos, setGrupos] = useState<any[]>([]);
-  
+  const [cerrandoSesion, setCerrandoSesion] = useState<boolean>(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   // Estados de edición
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [telefono, setTelefono] = useState<string>('');
@@ -23,7 +26,16 @@ const Perfil: React.FC = () => {
 
   useEffect(() => {
     cargarDatosLocales();
-    obtenerGruposDeMiCarrera();
+
+    // Activa la señal de cancelación
+    abortControllerRef.current = new AbortController();
+    obtenerGruposDeMiCarrera(abortControllerRef.current.signal);
+
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
   }, []);
 
   const cargarDatosLocales = () => {
@@ -38,17 +50,18 @@ const Perfil: React.FC = () => {
     }
   };
 
-  const obtenerGruposDeMiCarrera = async () => {
+  const obtenerGruposDeMiCarrera = async (signal?: AbortSignal) => {
     try {
       const token = sessionStorage.getItem('token');
       const response = await api.get('/usuario/grupos-carrera', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        signal: signal // Vincula la cancelación
       });
       if (Array.isArray(response.data)) {
         setGrupos(response.data);
       }
-    } catch (error) {
-      // Manejo silencioso seguro para producción
+    } catch (error: any) {
+      if (error.name === 'CanceledError' || error.message === 'canceled') return;
     }
   };
 
@@ -63,18 +76,31 @@ const Perfil: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
-  const handleCerrarSesion = () => {
-    sessionStorage.clear();
-    window.location.href = '/login';
+  const handleCerrarSesion = async () => {
+    setCerrandoSesion(true);
+
+    // Corta cualquier petición pendiente de fondo inmediatamente
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    try {
+      // Intenta invalidar en Laravel con tiempo límite de 1.5s
+      await api.post('/logout', {}, { timeout: 1500 });
+    } catch (error) {
+      console.error("Cierre de sesión local ejecutado");
+    } finally {
+      sessionStorage.clear();
+      localStorage.clear();
+      window.location.href = '/';
+    }
   };
 
   const handleGuardarCambios = async () => {
     try {
       const token = sessionStorage.getItem('token');
       const response = await api.put('/usuario/update-perfil', {
-        telefono: telefono,
-        grupo_id: grupoId,
-        foto: tempFoto
+        telefono: telefono
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -104,30 +130,16 @@ const Perfil: React.FC = () => {
         
         {/* CABECERA CON FOTO GRANDE (150PX) */}
         <div className="perfil-header-banner">
+          {/* 🏛️ Flecha vinculada al historial dinámico del navegador */}
+          <button className="profile-back-btn" onClick={() => window.history.back()} title="Regresar">
+            <IonIcon icon={arrowBackOutline} />
+          </button>
+
           <div className="avatar-overlap-container">
-            <div className={`avatar-wrapper ${isEditing ? 'avatar-editable-active' : ''}`}>
-              {tempFoto ? (
-                <img src={tempFoto} alt="Perfil" className="avatar-img-real" />
-              ) : (
-                <div className="avatar-letters">
-                  {usuario ? usuario.NombreUsuario.charAt(0).toUpperCase() : 'U'}
-                </div>
-              )}
-              
-              {isEditing && (
-                <label htmlFor="avatar-file-input" className="avatar-edit-overlay">
-                  <IonIcon icon={cameraOutline} />
-                </label>
-              )}
-              
-              <input 
-                type="file" 
-                id="avatar-file-input" 
-                accept="image/*" 
-                onChange={handleSeleccionarFotoLocal} 
-                disabled={!isEditing}
-                style={{ display: 'none' }} 
-              />
+            <div className="avatar-wrapper">
+              <div className="avatar-letters">
+                {usuario ? usuario.NombreUsuario.charAt(0).toUpperCase() : 'U'}
+              </div>
             </div>
             
             <h2 className="user-profile-name">
@@ -201,29 +213,14 @@ const Perfil: React.FC = () => {
               </IonLabel>
             </IonItem>
 
-            {/* GRUPO ASIGNADO (ESTRICTAMENTE ABAJO DE CARRERA) */}
-            <IonItem className={`perfil-info-item ${isEditing ? 'editable-active' : ''}`}>
+            {/* GRUPO ASIGNADO (ESTRICTAMENTE ABAJO DE CARRERA - SOLO LECTURA) */}
+            <IonItem className="perfil-info-item disabled-field">
               <div className="perfil-icon-box">
                 <IonIcon icon={peopleOutline} />
               </div>
-              <IonLabel className="ion-no-margin w-100">
+              <IonLabel>
                 <p>Grupo Asignado</p>
-                {isEditing ? (
-                  <IonSelect 
-                    value={grupoId} 
-                    onIonChange={(e: any) => setGrupoId(e.detail.value)}
-                    interface="popover"
-                    className="custom-profile-select"
-                  >
-                    {grupos.map((g: any) => (
-                      <IonSelectOption key={g.Grupo_ID} value={g.Grupo_ID}>
-                        {g.NombreGrupo || g.Nombre || `ID: ${g.Grupo_ID}`}
-                      </IonSelectOption>
-                    ))}
-                  </IonSelect>
-                ) : (
-                  <h4>{usuario?.grupo?.NombreGrupo || 'Sin grupo asignado'}</h4>
-                )}
+                <h4>{usuario?.grupo?.NombreGrupo || 'Sin grupo asignado'}</h4>
               </IonLabel>
             </IonItem>
 
@@ -238,7 +235,7 @@ const Perfil: React.FC = () => {
             </IonItem>
           </IonList>
 
-          {/* BOTONERA PREMIUM AL FONDO */}
+          {/* BOTONERA DE ACCIONES ABAJO */}
           <div className="profile-footer-actions">
             {!isEditing ? (
               <button className="action-profile-btn edit-trigger-btn" onClick={() => setIsEditing(true)}>
@@ -258,8 +255,12 @@ const Perfil: React.FC = () => {
               </div>
             )}
 
-            <button className="flat-logout-btn" onClick={handleCerrarSesion}>
-              Cerrar Sesión
+            <button 
+              className="flat-logout-btn" 
+              onClick={handleCerrarSesion}
+              disabled={cerrandoSesion}
+            >
+              {cerrandoSesion ? 'Cerrando sesión...' : 'Cerrar Sesión'}
             </button>
           </div>
 

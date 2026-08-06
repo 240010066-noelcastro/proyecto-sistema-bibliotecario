@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { IonContent, IonPage, IonIcon } from '@ionic/react';
 import { useParams } from 'react-router-dom';
-import { arrowBackOutline, bookOutline, schoolOutline, newspaperOutline, libraryOutline, warningOutline, documentTextOutline, checkmarkCircleOutline, bookmarkOutline, informationCircleOutline, clipboardOutline } from 'ionicons/icons';
+import { arrowBackOutline, bookOutline, schoolOutline, newspaperOutline, libraryOutline, warningOutline, documentTextOutline, checkmarkCircleOutline, bookmarkOutline, informationCircleOutline, clipboardOutline, heart, heartOutline, tvOutline, easelOutline, wifiOutline } from 'ionicons/icons';
 // @ts-ignore
 import api from '../../../services/api';
 import './DetalleRecurso.css';
@@ -10,6 +10,7 @@ const DetalleRecurso: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [recurso, setRecurso] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [isFavorito, setIsFavorito] = useState<boolean>(false); 
   const [toast, setToast] = useState({ show: false, message: '' });
   
   const [textosLegalesGlobales, setTextosLegalesGlobales] = useState({
@@ -19,18 +20,43 @@ const DetalleRecurso: React.FC = () => {
   const [avisoModal, setAvisoModal] = useState({ show: false, mensaje: '', url: '', isPdf: false });
 
   useEffect(() => {
+    // 🏛️ CAPA DE ULTRA VELOCIDAD: AbortController cancela peticiones duplicadas antes de saturar Laragon
+    const abortController = new AbortController();
+    let isMounted = true;
+
     const cargarDatosFicha = async () => {
       try {
         const token = sessionStorage.getItem('token');
         
-        // Carga paralela optimizada para velocidad extrema
-        const [resRecurso, resConfig] = await Promise.all([
-          api.get(`/usuario/recurso/${id}`, { headers: { Authorization: `Bearer ${token}` } }),
-          api.get('/configuraciones/Catalogo', { headers: { Authorization: `Bearer ${token}` } })
-        ]);
+        // 🏛️ OPTIMIZACIÓN DE CACHÉ: Verificamos si las configuraciones ya existen en el navegador
+        const cacheConfig = sessionStorage.getItem('upve_config_catalogo');
+        let configData = cacheConfig ? JSON.parse(cacheConfig) : null;
 
-        if (resConfig.data?.success) {
-          const configData = resConfig.data.data || {};
+        const promises: Promise<any>[] = [
+          api.get(`/usuario/recurso/${id}`, { 
+            headers: { Authorization: `Bearer ${token}` },
+            signal: abortController.signal
+          })
+        ];
+
+        // Si no están en caché, las descargamos por única vez
+        if (!configData) {
+          promises.push(
+            api.get('/configuraciones/Catalogo', { 
+              headers: { Authorization: `Bearer ${token}` },
+              signal: abortController.signal
+            })
+          );
+        }
+
+        const [resRecurso, resConfig] = await Promise.all(promises);
+
+        if (!configData && resConfig?.data?.success) {
+          configData = resConfig.data.data || {};
+          sessionStorage.setItem('upve_config_catalogo', JSON.stringify(configData));
+        }
+
+        if (configData) {
           setTextosLegalesGlobales({
             libro: configData.mensaje_legal_libro || '',
             revista: configData.mensaje_legal_revista || '',
@@ -39,17 +65,47 @@ const DetalleRecurso: React.FC = () => {
           });
         }
 
-        if (resRecurso.data?.success) {
+        if (resRecurso.data?.success && isMounted) {
           setRecurso(resRecurso.data.data);
+          if (resRecurso.data.data.is_favorito) {
+            setIsFavorito(true);
+          }
         }
-      } catch (err) {
-        setToast({ show: true, message: 'Error al conectar con el repositorio de la biblioteca.' });
+      } catch (err: any) {
+        if (err.name !== 'CanceledError' && err.message !== 'canceled') {
+          setToast({ show: true, message: 'Error al conectar con el repositorio de la biblioteca.' });
+        }
       } finally {
-        setLoading(false);
+        if (isMounted && !abortController.signal.aborted) {
+          setLoading(false);
+        }
       }
     };
+
     cargarDatosFicha();
+
+    return () => {
+      isMounted = false;
+      abortController.abort(); // Cancela llamadas colgadas al salir de la pantalla
+    };
   }, [id]);
+
+  const handleToggleFavorito = async () => {
+    try {
+      const token = sessionStorage.getItem('token');
+      const nuevoEstado = !isFavorito;
+      setIsFavorito(nuevoEstado); // UI Optimista: prende/apaga al instante sin esperar al servidor
+
+      await api.post(`/usuario/recurso/${id}/favorito`, {
+        favorito: nuevoEstado
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    } catch (err) {
+      console.error("Error al guardar favorito:", err);
+      setIsFavorito(isFavorito); // Reversa el estado si hay un error real de red
+    }
+  };
 
   const handleOpenLink = (e: any, url: string, mensajeLegal: string, isPdf: boolean = false) => {
     e.preventDefault(); 
@@ -80,15 +136,20 @@ const DetalleRecurso: React.FC = () => {
     if (tipo === 'Tesis') return schoolOutline;
     if (tipo === 'Revista / Artículo Científico') return newspaperOutline;
     if (tipo === 'Enciclopedia / Diccionario') return libraryOutline;
+    if (tipo === 'Equipo Audiovisual') return tvOutline;
+    if (tipo === 'Mobiliario Didáctico') return easelOutline;
+    if (tipo === 'Dispositivo de Conectividad') return wifiOutline;
     return bookOutline;
   };
 
-  // 🏛️ FUNCIÓN CORREGIDA: Mensajes absolutos sin la palabra "físico"
   const obtenerMensajeAgotado = (tipo: string) => {
     if (tipo === 'Revista / Artículo Científico') return 'Revista no disponible';
     if (tipo === 'Enciclopedia / Diccionario') return 'Enciclopedia no disponible';
     if (tipo === 'Tesis') return 'Tesis no disponible';
-    return 'Libro no disponible';
+    if (tipo === 'Equipo Audiovisual') return 'Equipo no disponible';
+    if (tipo === 'Mobiliario Didáctico') return 'Mobiliario no disponible';
+    if (tipo === 'Dispositivo de Conectividad') return 'Dispositivo no disponible';
+    return 'Sin ejemplares disponibles';
   };
 
   if (loading) {
@@ -116,14 +177,12 @@ const DetalleRecurso: React.FC = () => {
   }
 
   const isPrintMaterial = ['Libro', 'Revista / Artículo Científico', 'Tesis', 'Enciclopedia / Diccionario'].includes(recurso.TipoRecurso);
-  
-  // Variables booleanas de control de inventario real
   const tieneEnlaceDigital = recurso.URL_Externa || recurso.Pdf_url;
   const tieneStockFisico = recurso.unidades_disponibles > 0;
 
   return (
     <IonPage>
-      <div className="premium-navbar">
+      <div className="detalle-navbar">
         <div className="navbar-left">
           <button className="navbar-back-arrow-btn" onClick={() => window.history.back()} title="Regresar al catálogo">
             <IonIcon icon={arrowBackOutline} />
@@ -183,8 +242,6 @@ const DetalleRecurso: React.FC = () => {
               </div>
 
               <div className="cervantes-under-cover-box">
-                
-                {/* BOTÓN DE REDIRECCIÓN ABAJO DE LA PORTADA */}
                 {recurso.TipoRecurso === 'Tesis' && recurso.Pdf_url ? (
                   <button className="btn-cervantes-digital dynamic-bg-verde" style={{ marginBottom: '12px' }} onClick={(e) => handleOpenLink(e, recurso.Pdf_url, recurso.Mensaje_Legal, true)}>
                     📄 Ver Documento PDF
@@ -195,7 +252,6 @@ const DetalleRecurso: React.FC = () => {
                   </button>
                 ) : null}
 
-                {/* 📊 CONTENEDORES DE ESTADO BASADOS EN TU INVENTARIO REAL */}
                 {tieneStockFisico && tieneEnlaceDigital && (
                   <div className="real-inventory-badge badge-both" style={{ marginBottom: '12px' }}>
                     <span className="badge-dot dot-green"></span>
@@ -217,39 +273,64 @@ const DetalleRecurso: React.FC = () => {
                   </div>
                 )}
 
-                {/* MENSAJE DIRECTO DE NO DISPONIBILIDAD ABSOLUTA */}
                 {!tieneStockFisico && !tieneEnlaceDigital && (
                   <div className="real-inventory-badge badge-empty" style={{ marginBottom: '12px' }}>
                     <span className="badge-dot dot-red"></span>
                     <span>{obtenerMensajeAgotado(recurso.TipoRecurso)}</span>
                   </div>
                 )}
-
               </div>
             </div>
 
-            {/* COLUMNA DERECHA: TARJETA ÚNICA MASIVA INTEGRADA */}
+            {/* COLUMNA DERECHA: ESPECIFICACIONES CON CORAZÓN ALINEADO */}
             <div className="cervantes-col-right">
               
               <h1 className="cervantes-main-title-text">{recurso.Titulo}</h1>
               <div className="cervantes-title-divider"></div>
 
               <div className="cervantes-section-group-card">
-                <h3 className="group-card-title"><IonIcon icon={bookmarkOutline} /> Especificaciones Generales</h3>
+                {/* 🏛️ CORRECCIÓN UBICACIÓN: Corazón integrado en el extremo derecho de la barra gris */}
+                <h3 className="group-card-title">
+                  <div className="group-card-title-left-side">
+                    <IonIcon icon={bookmarkOutline} /> 
+                    <span>Especificaciones Generales</span>
+                  </div>
+                  
+                  <button 
+                    type="button"
+                    className={`btn-favorito-heart-ficha ${isFavorito ? 'heart-active-red' : ''}`}
+                    onClick={handleToggleFavorito}
+                    title={isFavorito ? "Quitar de favoritos" : "Añadir a favoritos"}
+                  >
+                    <IonIcon icon={isFavorito ? heart : heartOutline} />
+                  </button>
+                </h3>
                 
                 <div className="group-card-content">
                   <p className="cervantes-meta-row"><span className="cervantes-label">Tipo de recurso:</span><span className="cervantes-value text-purple-type">{recurso.TipoRecurso}</span></p>
-                  <p className="cervantes-meta-row"><span className="cervantes-label">Área / Tema:</span><span className="cervantes-value">{recurso.TemaRecurso || 'General'}</span></p>
-                  <p className="cervantes-meta-row"><span className="cervantes-label">Año de publicación:</span><span className="cervantes-value">{recurso.AnioPublicacion}</span></p>
                   
-                  {recurso.TipoRecurso === 'Tesis' ? (
+                  {['Equipo Audiovisual', 'Mobiliario Didáctico', 'Dispositivo de Conectividad'].includes(recurso.TipoRecurso) ? (
                     <>
+                      <p className="cervantes-meta-row"><span className="cervantes-label">Año de registro:</span><span className="cervantes-value">{recurso.AnioPublicacion}</span></p>
+                      <p className="cervantes-meta-row"><span className="cervantes-label">Marca / Fabricante:</span><span className="cervantes-value text-link-style">{recurso.Marca || 'No especificada'}</span></p>
+                      {recurso.TipoRecurso === 'Mobiliario Didáctico' ? (
+                        <p className="cervantes-meta-row"><span className="cervantes-label">Material:</span><span className="cervantes-value">{recurso.Material || 'No especificado'}</span></p>
+                      ) : (
+                        <p className="cervantes-meta-row"><span className="cervantes-label">Número de Serie:</span><span className="cervantes-value">{recurso.NumSerie || 'No especificado'}</span></p>
+                      )}
+                    </>
+                  ) : recurso.TipoRecurso === 'Tesis' ? (
+                    <>
+                      <p className="cervantes-meta-row"><span className="cervantes-label">Área / Tema:</span><span className="cervantes-value">{recurso.TemaRecurso || 'General'}</span></p>
+                      <p className="cervantes-meta-row"><span className="cervantes-label">Año de publicación:</span><span className="cervantes-value">{recurso.AnioPublicacion}</span></p>
                       <p className="cervantes-meta-row"><span className="cervantes-label">Autor (Alumno):</span><span className="cervantes-value text-link-style">{recurso.AutorTexto || 'No especificado'}</span></p>
                       <p className="cervantes-meta-row"><span className="cervantes-label">Maestro Asesor:</span><span className="cervantes-value">{recurso.Asesor || 'No especificado'}</span></p>
                       <p className="cervantes-meta-row"><span className="cervantes-label">Grado / Carrera:</span><span className="cervantes-value">{recurso.GradoCarrera || 'No especificado'}</span></p>
                     </>
                   ) : (
                     <>
+                      <p className="cervantes-meta-row"><span className="cervantes-label">Área / Tema:</span><span className="cervantes-value">{recurso.TemaRecurso || 'General'}</span></p>
+                      <p className="cervantes-meta-row"><span className="cervantes-label">Año de publicación:</span><span className="cervantes-value">{recurso.AnioPublicacion}</span></p>
                       <p className="cervantes-meta-row"><span className="cervantes-label">Autor / Compilador:</span><span className="cervantes-value text-link-style">{recurso.Autor || 'Autor Colectivo / Institucional'}</span></p>
                       <p className="cervantes-meta-row"><span className="cervantes-label">Casa Editorial:</span><span className="cervantes-value">{recurso.Editorial || 'Edición Independiente'}</span></p>
                       <p className="cervantes-meta-row"><span className="cervantes-label">Edición / Volumen:</span><span className="cervantes-value">{recurso.EdicionVolumen || '-'}</span></p>
@@ -266,14 +347,17 @@ const DetalleRecurso: React.FC = () => {
                     </>
                   )}
 
-                  <div className="single-card-inner-text-block">
-                    <h4 className="inner-block-subtitle"><IonIcon icon={documentTextOutline} /> Resumen / Sinopsis:</h4>
-                    <p className="cervantes-paragraph-justified text-main-synopsis">
-                      {recurso.Resumen && recurso.Resumen.trim() !== '' 
-                        ? recurso.Resumen 
-                        : 'Este recurso no cuenta con una sinopsis o resumen argumental registrado en el catálogo digital.'}
-                    </p>
-                  </div>
+                  {/* 🏛️ Ocultamos la sinopsis para activos fijos que no la requieren */}
+                  {!['Equipo Audiovisual', 'Mobiliario Didáctico', 'Dispositivo de Conectividad'].includes(recurso.TipoRecurso) && (
+                    <div className="single-card-inner-text-block">
+                      <h4 className="inner-block-subtitle"><IonIcon icon={documentTextOutline} /> Resumen / Sinopsis:</h4>
+                      <p className="cervantes-paragraph-justified text-main-synopsis">
+                        {recurso.Resumen && recurso.Resumen.trim() !== '' 
+                          ? recurso.Resumen 
+                          : 'Este recurso no cuenta con una sinopsis o resumen argumental registrado en el catálogo digital.'}
+                      </p>
+                    </div>
+                  )}
 
                   <div className="single-card-inner-text-block border-top-dashed">
                     <h4 className="inner-block-subtitle"><IonIcon icon={clipboardOutline} /> Observaciones:</h4>
