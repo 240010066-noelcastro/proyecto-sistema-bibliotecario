@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('roles', function (Blueprint $table) {
             $table->id('Rol_ID');
-            $table->string('NombreRol', 50); 
+            $table->text('NombreRol'); 
             $table->timestamps();
         });
     }
