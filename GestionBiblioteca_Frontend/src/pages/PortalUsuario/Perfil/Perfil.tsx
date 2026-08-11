@@ -204,14 +204,14 @@ const Perfil: React.FC = () => {
 
             {/* CARRERA */}
             <IonItem className="perfil-info-item disabled-field">
-              <div className="perfil-icon-box">
-                <IonIcon icon={schoolOutline} />
-              </div>
-              <IonLabel>
-                <p>Carrera / División</p>
-                <h4>{usuario?.grupo?.carrera?.NombreCarrera || 'Ingeniería en Tecnologías de la Información'}</h4>
-              </IonLabel>
-            </IonItem>
+            <div className="perfil-icon-box">
+              <IonIcon icon={schoolOutline} />
+            </div>
+            <IonLabel>
+              <p>Carrera / División</p>
+              <h4>{usuario?.grupo?.carrera?.NombreCarrera || 'Sin carrera asignada'}</h4>
+            </IonLabel>
+          </IonItem>
 
             {/* GRUPO ASIGNADO (ESTRICTAMENTE ABAJO DE CARRERA - SOLO LECTURA) */}
             <IonItem className="perfil-info-item disabled-field">
