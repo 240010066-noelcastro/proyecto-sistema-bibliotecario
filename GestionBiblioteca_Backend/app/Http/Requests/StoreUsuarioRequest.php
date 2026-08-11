@@ -31,7 +31,7 @@ class StoreUsuarioRequest extends FormRequest
             'Telefono'          => 'nullable|string|max:20',
             'Direccion'         => 'nullable|string',
             'Grupo_ID'          => 'nullable|exists:grupos,Grupo_ID',
-            'Rol_ID'            => 'required|exists:roles,Rol_ID',
+            'Rol_ID' => 'nullable|exists:roles,Rol_ID',
         ];
     }
 }
