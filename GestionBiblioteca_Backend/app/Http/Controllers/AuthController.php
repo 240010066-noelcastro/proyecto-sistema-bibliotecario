@@ -10,21 +10,6 @@ use Illuminate\Support\Facades\Crypt;
 
 class AuthController extends Controller
 {
-    private function cleanUtf8(?string $texto): string
-    {
-        if (!$texto) return '';
-        
-        // Si el texto trae la secuencia 'Ã' (rotura típica de decodificación Google/JS)
-        if (str_contains($texto, 'Ã')) {
-            $reparado = @utf8_decode($texto);
-            if ($reparado && mb_check_encoding($reparado, 'UTF-8')) {
-                return trim($reparado);
-            }
-        }
-        
-        return trim($texto);
-    }
-
     // ================================================================
     // PROCESAMIENTO INICIAL CON GOOGLE (Alumnos)
     // ================================================================
@@ -45,11 +30,11 @@ class AuthController extends Controller
                     'message' => 'Correo institucional válido. Redirigiendo a completar registro.',
                     'datos_google' => [
                         'correo' => $request->correo,
-                        'nombre' => $this->cleanUtf8($request->nombre),
-                        'apellido_paterno' => $this->cleanUtf8($request->apellido_paterno),
-                        'apellido_materno' => $this->cleanUtf8($request->apellido_materno)
+                        'nombre' => $request->nombre,
+                        'apellido_paterno' => $request->apellido_paterno,
+                        'apellido_materno' => $request->apellido_materno
                     ]
-                ], 200, [], JSON_UNESCAPED_UNICODE);
+                ]);
             }
 
             $token = $usuarioBuscado->createToken('usuario_token')->plainTextToken;
@@ -61,10 +46,10 @@ class AuthController extends Controller
                     'success' => true,
                     'es_nuevo' => false,
                     'message' => 'Bienvenido al Sistema Bibliotecario, ' . $usuarioBuscado->NombreUsuario,
-                    'token' => $token,
-                    'rol' => Crypt::encryptString($rolTexto),
-                    'usuario' => $usuarioBuscado
-                ], 200, [], JSON_UNESCAPED_UNICODE);
+                        'token' => $token,
+                        'rol' => Crypt::encryptString($rolTexto), // Rol cifrado simétricamente
+                        'usuario' => $usuarioBuscado
+            ]);
 
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => 'Error en el servidor de Google Auth: ' . $e->getMessage()], 500);
@@ -88,9 +73,9 @@ class AuthController extends Controller
             $nuevoUsuario = new Usuario();
             $nuevoUsuario->Rol_ID = Rol::USUARIO;
             $nuevoUsuario->CorreoElectronico = $request->correo;
-            $nuevoUsuario->NombreUsuario = $this->cleanUtf8($request->nombre);
-            $nuevoUsuario->ApellidoPaterno = $this->cleanUtf8($request->apellido_paterno);
-            $nuevoUsuario->ApellidoMaterno = $this->cleanUtf8($request->apellido_materno);
+            $nuevoUsuario->NombreUsuario = $request->nombre;
+            $nuevoUsuario->ApellidoPaterno = $request->apellido_paterno ?? '';
+            $nuevoUsuario->ApellidoMaterno = $request->apellido_materno ?? '';
             $nuevoUsuario->Matricula = $request->matricula;
             $nuevoUsuario->Telefono = $request->telefono;
             $nuevoUsuario->Grupo_ID = $request->grupo_id ?: null; 
@@ -106,7 +91,7 @@ class AuthController extends Controller
                 'token' => $token,
                 'rol' => Crypt::encryptString('usuario'), 
                 'usuario' => $nuevoUsuario
-            ], 200, [], JSON_UNESCAPED_UNICODE);
+            ]);
 
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => 'Error al registrar: ' . $e->getMessage()], 500);

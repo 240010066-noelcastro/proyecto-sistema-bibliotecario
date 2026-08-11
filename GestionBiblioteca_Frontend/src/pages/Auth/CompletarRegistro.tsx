@@ -136,12 +136,7 @@ const CompletarRegistro: React.FC = () => {
               </div>
 
               <h2 className="registro-title">Completa tu perfil</h2>
-              <p className="registro-subtitle">
-                Hola, {(() => {
-                  try { return decodeURIComponent(escape(datosGoogle.nombre)); } 
-                  catch { return datosGoogle.nombre; }
-                })()}. Introduce tus datos.
-              </p>
+              <p className="registro-subtitle">Hola, {datosGoogle.nombre}. Introduce tus datos.</p>
 
               {errorMsg && <div className="registro-alert">{errorMsg}</div>}
 
