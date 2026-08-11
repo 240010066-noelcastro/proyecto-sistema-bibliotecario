@@ -13,7 +13,16 @@ class AuthController extends Controller
     private function cleanUtf8(?string $texto): string
     {
         if (!$texto) return '';
-        return mb_convert_encoding(trim($texto), 'UTF-8', 'UTF-8');
+        
+        // Si el texto trae la secuencia 'Ã' (rotura típica de decodificación Google/JS)
+        if (str_contains($texto, 'Ã')) {
+            $reparado = @utf8_decode($texto);
+            if ($reparado && mb_check_encoding($reparado, 'UTF-8')) {
+                return trim($reparado);
+            }
+        }
+        
+        return trim($texto);
     }
 
     // ================================================================
