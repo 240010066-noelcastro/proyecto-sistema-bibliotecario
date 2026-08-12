@@ -75,18 +75,18 @@ class UsuarioController extends Controller
         ], 201);
     }
 
-    public function update(UpdateUsuarioRequest $request, $id)
+    public function update(Request $request, $id)
     {
-        $usuario = Usuario::where('Rol_ID', Rol::USUARIO->value)->findOrFail($id);
-        
-        $data = $request->validated();
-        unset($data['Rol_ID']);
+    $usuario = Usuario::where('Rol_ID', Rol::USUARIO->value)->findOrFail($id);
+    
+    $data = $request->all();
+    unset($data['Rol_ID']);
 
-        $usuario->update($data);
+    $usuario->update($data);
 
-        return response()->json(['success' => true, 'data' => $usuario], 200);
+    return response()->json(['success' => true, 'data' => $usuario], 200);
+    
     }
-
     public function destroy(Request $request, $id)
     {
         if (!$request->user() || $request->user()->Rol_ID !== Rol::ADMIN) {
