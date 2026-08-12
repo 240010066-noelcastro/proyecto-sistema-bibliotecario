@@ -28,6 +28,7 @@ return new class extends Migration
             $table->string('EstadoSancion', 30);
             $table->string('EstadoSancion_Logico', 30)->nullable();
             $table->dateTime('FechaGeneracion');
+            $table->dateTime('FechaPago')->nullable();
             $table->string('Observaciones', 250)->nullable();
             
             $table->timestamps();
