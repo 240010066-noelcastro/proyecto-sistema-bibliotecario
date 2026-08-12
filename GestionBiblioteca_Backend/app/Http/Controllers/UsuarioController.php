@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use App\Http\Requests\StoreUsuarioRequest;
 use App\Http\Requests\UpdateUsuarioRequest;
-use App\Http\Requests\RegisterAdminRequest;
 
 class UsuarioController extends Controller
 {
@@ -117,28 +116,28 @@ class UsuarioController extends Controller
         }
     }
 
-    public function registrarAdmin(RegisterAdminRequest $request)
-    {
-        try {
-            $data = $request->validated();
+    public function registrarAdmin(Request $request)
+{
+    try {
+        $data = $request->all();
 
-            if (!Hash::check($data['llave_infraestructura'], env('MASTER_ADMIN_KEY'))) {
-                return response()->json(['success' => false, 'message' => 'Acción denegada. La llave de infraestructura es incorrecta.'], 403);
-            }
-
-            $admin = Usuario::create([
-                'Rol_ID'            => Rol::ADMIN->value,
-                'NombreUsuario'     => $data['NombreUsuario'],
-                'ApellidoPaterno'   => $data['ApellidoPaterno'],
-                'ApellidoMaterno'   => $data['ApellidoMaterno'] ?? null,
-                'CorreoElectronico' => $data['CorreoElectronico'],
-                'Telefono'          => $data['Telefono'],
-                'EstadoCuenta'      => 'Activo'
-            ]);
-
-            return response()->json(['success' => true, 'message' => 'Administrador de infraestructura registrado con éxito.', 'data' => $admin], 201);
-        } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'Error al registrar: ' . $e->getMessage()], 500);
+        if (!Hash::check($data['llave_infraestructura'], env('MASTER_ADMIN_KEY'))) {
+            return response()->json(['success' => false, 'message' => 'Acción denegada. La llave de infraestructura es incorrecta.'], 403);
         }
+
+        $admin = Usuario::create([
+            'Rol_ID'            => Rol::ADMIN->value,
+            'NombreUsuario'     => $data['NombreUsuario'],
+            'ApellidoPaterno'   => $data['ApellidoPaterno'],
+            'ApellidoMaterno'   => $data['ApellidoMaterno'] ?? null,
+            'CorreoElectronico' => $data['CorreoElectronico'],
+            'Telefono'          => $data['Telefono'] ?? null,
+            'EstadoCuenta'      => 'Activo'
+        ]);
+
+        return response()->json(['success' => true, 'message' => 'Administrador de infraestructura registrado con éxito.', 'data' => $admin], 201);
+    } catch (\Exception $e) {
+        return response()->json(['success' => false, 'message' => 'Error al registrar: ' . $e->getMessage()], 500);
     }
+}
 }
