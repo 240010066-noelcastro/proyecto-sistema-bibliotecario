@@ -106,7 +106,7 @@
         <tr>
             <td style="text-align: left;">
                 @if(file_exists(public_path('img/LogoConstancia.png')))
-                    <img src="{{ public_path('img/LogoConstancia.png') }}" class="logo-img" alt="Logo UPVE">
+                    <img src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('img/LogoConstancia.png'))) }}" class="logo-img" alt="Logo UPVE">
                 @endif
             </td>
         </tr>
